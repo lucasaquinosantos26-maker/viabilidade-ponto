@@ -279,6 +279,15 @@ async function abrirPonto(id){
     <div class="card">
       <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
       <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
+      <div style="background:#eef2fd;border-radius:10px;padding:10px 12px;margin-top:10px">
+        <b style="font-size:13px">Já fez a contagem?</b>
+        <div style="font-size:12px;color:var(--cinza)">Registre direto, sem usar o cronômetro:</div>
+        <label>Pessoas que passaram em 2 minutos</label>
+        <input type="number" id="fManual" min="0" placeholder="ex.: 34">
+        <div class="chk"><input type="checkbox" id="fJanela"><span>A contagem foi feita <b>entre 12h e 14h</b>, em frente ao imóvel</span></div>
+        <button class="btn sec" onclick="registrarManual()">Registrar contagem</button>
+      </div>
+      <div style="font-size:12px;color:var(--cinza);text-align:center;margin-top:10px">— ou conte agora —</div>
       <div class="timerbox">
         <div class="timer" id="tmr">2:00</div>
         <div class="contador" id="cnt" style="display:none">0</div>
@@ -301,7 +310,6 @@ function cardAnalise(a){
   return `<div class="card">
     <div><span class="sem ${a.semaforo}"></span><b style="font-size:16px">${nomeRec}</b> <span style="font-size:12px;color:var(--cinza)">· ${mod}${a.preliminar?" · preliminar":""}</span></div>
     <div style="font-size:13px;color:#1c2430;margin:8px 0">${a.motivo_principal}</div>
-    ${a.aluguel_estimado?`<div class="faixa">R$ ${fmt(a.aluguel_estimado.min)} – ${fmt(a.aluguel_estimado.max)}</div><div style="font-size:11.5px;color:var(--cinza)">aluguel estimado ${a.aluguel_pedido_status?`· pedido está <b>${a.aluguel_pedido_status}</b> da faixa`:""}</div>`:""}
     ${a.reforma_estimada?`<div style="font-size:12.5px;color:var(--cinza);margin-top:6px">Reforma estimada: R$ ${fmt(a.reforma_estimada.min)} – ${fmt(a.reforma_estimada.max)}</div>`:""}
     ${a.fluxo?.media!=null?`<div style="font-size:12.5px;margin-top:6px">Fluxo médio: <b>${a.fluxo.media}</b> pessoas/2min (${a.fluxo.leituras_validas} leitura(s), ${a.fluxo.dias_distintos} dia(s))</div>`:""}
     ${a.dados_faltantes?.length?`<h4>Complete para refinar</h4>${a.dados_faltantes.map(d=>`<span class="dado-falt">${d.replaceAll("_"," ")}</span>`).join("")}`:""}
@@ -350,6 +358,20 @@ function cancelarContagem(){
   if(!confirm("Cancelar esta contagem? Os toques serão descartados."))return;
   clearInterval(tick);contando=false;pausado=false;
   resetContagemUI();
+}
+async function registrarManual(){
+  const n=num("fManual");
+  if(n==null||n<0){alert("Informe quantas pessoas passaram nos 2 minutos.");return}
+  const janela=document.getElementById("fJanela").checked;
+  if(!janela&&!confirm("A contagem NÃO foi feita entre 12h e 14h?\n\nEla será registrada como fora do padrão e não entra na média. Registrar mesmo assim?"))return;
+  const d=new Date();
+  if(janela){d.setHours(12,30,0,0); if(d.getTime()>Date.now()) d.setDate(d.getDate()-1);}
+  try{
+    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:n,inicio:d.toISOString(),duracao_s:120});
+    alert((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"Leitura registrada!\n\n")+r.proxima_orientacao);
+    document.getElementById("fManual").value=""; document.getElementById("fJanela").checked=false;
+    resumoFluxo();
+  }catch(e){alert(e.message)}
 }
 function resetContagemUI(){
   const g=id=>document.getElementById(id);
