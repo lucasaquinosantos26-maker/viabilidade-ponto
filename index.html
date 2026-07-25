@@ -68,14 +68,15 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
     <div id="vEntrar">
       <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com">
       <label>Senha</label><input type="text" id="lSenha" placeholder="senha" style="-webkit-text-security:disc">
-      <button class="btn pri" onclick="entrar()">Entrar</button>
+      <button class="btn pri" id="bEntrar" onclick="ocupado('bEntrar','Entrando…',entrar)">Entrar</button>
       <button class="btn sec" onclick="mostrarCadastro(true)">Ainda não tenho conta — criar cadastro</button>
+      <button class="btn sec" style="background:none" onclick="esqueciSenha()">Esqueci minha senha</button>
     </div>
     <div id="vCadastro" style="display:none">
       <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome">
       <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com">
       <label>Senha (mínimo 6 caracteres)</label><input type="text" id="cSenha" placeholder="crie uma senha" style="-webkit-text-security:disc">
-      <button class="btn pri" onclick="cadastrar()">Criar minha conta</button>
+      <button class="btn pri" id="bCadastrar" onclick="ocupado('bCadastrar','Criando…',cadastrar)">Criar minha conta</button>
       <button class="btn sec" onclick="mostrarCadastro(false)">Já tenho conta — entrar</button>
     </div>
     <div class="msg" id="lMsg"></div>
@@ -83,7 +84,7 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
 </div>
 
 <div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="sair()">Sair</button></div>
-<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button onclick="buscarEndereco()">Buscar</button></div>
+<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button></div>
 <div id="map"></div>
 
 <div class="painel" id="painel">
@@ -122,26 +123,67 @@ async function entrar(){
   msg("Entrando…", true);
   const {ok,data}=await authReq("token?grant_type=password",{email:v("lEmail"),password:v("lSenha")});
   if(!ok){msg(traduzErro(data));return}
-  TOKEN=data.access_token; iniciar(data.user?.email);
+  TOKEN=data.access_token; salvarSessao(data); iniciar(data.user?.email);
 }
 async function cadastrar(){
   if(!v("cNome")){msg("Informe seu nome completo.");return}
   msg("Criando sua conta…", true);
   const {ok,data}=await authReq("signup",{email:v("cEmail"),password:v("cSenha"),data:{nome:v("cNome")}});
   if(!ok){msg(traduzErro(data));return}
-  if(data.access_token){TOKEN=data.access_token;iniciar(data.user?.email);}
+  if(data.access_token){TOKEN=data.access_token;salvarSessao(data);iniciar(data.user?.email);}
   else{
     mostrarCadastro(false);
     document.getElementById("lEmail").value=v("cEmail");
     msg("Conta criada! Enviamos um link de confirmação para "+v("cEmail")+". Confirme (veja o spam) e depois entre aqui com sua senha.", true);
   }
 }
-function sair(){TOKEN=null;location.reload()}
+function sair(){TOKEN=null;try{localStorage.removeItem("oc_sessao")}catch(e){};location.reload()}
 function v(id){return document.getElementById(id).value.trim()}
 
+// ---------- SESSÃO / UTIL ----------
+async function ocupado(id,rotulo,fn){
+  const b=document.getElementById(id); if(!b||b.disabled)return;
+  const t=b.innerHTML; b.disabled=true; b.innerHTML=rotulo;
+  try{await fn()}finally{b.disabled=false;b.innerHTML=t}
+}
+function salvarSessao(d){try{localStorage.setItem("oc_sessao",JSON.stringify({rt:d.refresh_token,email:d.user?.email}))}catch(e){}}
+function lerSessao(){try{return JSON.parse(localStorage.getItem("oc_sessao"))}catch(e){return null}}
+async function refreshToken(){
+  const s=lerSessao(); if(!s?.rt)return false;
+  const {ok,data}=await authReq("token?grant_type=refresh_token",{refresh_token:s.rt});
+  if(!ok){try{localStorage.removeItem("oc_sessao")}catch(e){};return false}
+  TOKEN=data.access_token; salvarSessao(data); return true;
+}
+async function restaurarSessao(){
+  if(await refreshToken()){iniciar(lerSessao()?.email);return true}
+  return false;
+}
+async function esqueciSenha(){
+  const email=v("lEmail")||prompt("Qual o seu e-mail de cadastro?");
+  if(!email)return;
+  msg("Enviando…", true);
+  const {ok,data}=await authReq("recover?redirect_to="+encodeURIComponent(location.origin+location.pathname),{email});
+  msg(ok?"Enviamos um link de redefinição para "+email+" (veja o spam). Abra o link e crie a nova senha.":traduzErro(data), ok);
+}
+async function tratarLinkRecuperacao(){
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(h.get("type")!=="recovery"||!h.get("access_token"))return false;
+  const tk=h.get("access_token");
+  history.replaceState(null,"",location.pathname);
+  const nova=prompt("Crie sua nova senha (mínimo 6 caracteres):");
+  if(nova){
+    const r=await fetch(`${SUPA_URL}/auth/v1/user`,{method:"PUT",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+tk},body:JSON.stringify({password:nova})});
+    if(r.ok){msg("Senha alterada! Entre com a nova senha.", true);}
+    else{msg("Não foi possível alterar a senha. Peça um novo link em \"Esqueci minha senha\".");}
+  }
+  return true;
+}
+window.addEventListener("load",async()=>{ if(await tratarLinkRecuperacao())return; restaurarSessao(); });
+
 // ---------- API ----------
-async function api(fn,path,method="GET",body=null){
+async function api(fn,path,method="GET",body=null,retry){
   const r=await fetch(`${SUPA_URL}/functions/v1/${fn}${path}`,{method,headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+TOKEN},body:body?JSON.stringify(body):null});
+  if(r.status===401&&!retry&&await refreshToken()) return api(fn,path,method,body,true);
   const d=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(d?.error?.message||("Erro "+r.status));
   return d;
@@ -240,7 +282,10 @@ async function buscarEndereco(){
     alert("A busca falhou agora. Verifique a conexão e tente de novo — ou toque direto no mapa para soltar o pin.");
   }
 }
+let criandoPonto=false;
 async function novoPonto(lat,lng,endTexto){
+  if(contando){alert("Termine ou cancele a contagem antes de marcar outro ponto.");return}
+  if(criandoPonto)return; criandoPonto=true;
   let endereco=endTexto,cidade=null,uf=null;
   try{
     const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
@@ -251,6 +296,7 @@ async function novoPonto(lat,lng,endTexto){
     const p=await api("api-viabilidade","/pontos","POST",{lat,lng,endereco,cidade,uf});
     plotar(p); abrirPonto(p.id); atualizarRanking();
   }catch(e){alert(e.message)}
+  criandoPonto=false;
 }
 
 // ---------- PAINEL DO PONTO ----------
@@ -273,8 +319,8 @@ async function abrirPonto(id){
       </div>
       <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
       <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
-      <button class="btn sec" onclick="salvarDados()">Salvar dados</button>
-      <button class="btn pri" onclick="analisar()">Analisar ponto</button>
+      <button class="btn sec" id="bSalvar" onclick="ocupado('bSalvar','Salvando…',salvarDados)">Salvar dados</button>
+      <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
     <div class="card">
       <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
@@ -285,7 +331,7 @@ async function abrirPonto(id){
         <label>Pessoas que passaram em 2 minutos</label>
         <input type="number" id="fManual" min="0" placeholder="ex.: 34">
         <div class="chk"><input type="checkbox" id="fJanela"><span>A contagem foi feita <b>entre 12h e 14h</b>, em frente ao imóvel</span></div>
-        <button class="btn sec" onclick="registrarManual()">Registrar contagem</button>
+        <button class="btn sec" id="bRegManual" onclick="ocupado('bRegManual','Registrando…',registrarManual)">Registrar contagem</button>
       </div>
       <div style="font-size:12px;color:var(--cinza);text-align:center;margin-top:10px">— ou conte agora —</div>
       <div class="timerbox">
@@ -299,7 +345,7 @@ async function abrirPonto(id){
       </div>
       <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
     </div>
-    <button class="btn amar" onclick="handoff()">✓ Seguir para negociação</button>
+    <button class="btn amar" id="bHandoff" onclick="ocupado('bHandoff','Enviando…',handoff)">✓ Seguir para negociação</button>
     <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
   document.getElementById("painel").classList.add("aberto");
   resumoFluxo();
@@ -317,7 +363,11 @@ function cardAnalise(a){
   </div>`;
 }
 function fmt(n){return Number(n).toLocaleString("pt-BR")}
-function fecharPainel(){document.getElementById("painel").classList.remove("aberto")}
+function fecharPainel(){
+  if(contando&&!confirm("Há uma contagem em andamento. Fechar o painel descarta a contagem. Fechar mesmo assim?"))return;
+  if(contando){clearInterval(tick);contando=false;pausado=false;resetContagemUI();}
+  document.getElementById("painel").classList.remove("aberto");
+}
 
 async function salvarDados(){
   const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked};
