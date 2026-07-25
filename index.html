@@ -283,6 +283,10 @@ async function abrirPonto(id){
         <div class="timer" id="tmr">2:00</div>
         <div class="contador" id="cnt" style="display:none">0</div>
         <button class="tap" id="btnTap" onclick="tapOuIniciar()">Iniciar contagem</button>
+        <div id="ctlContagem" style="display:none;gap:8px;margin-top:8px">
+          <button class="btn sec" style="margin-top:0" id="btnPause" onclick="pausarContagem()">&#9208; Pausar</button>
+          <button class="btn" style="margin-top:0;background:#fdeaea;color:var(--verm)" onclick="cancelarContagem()">&#10005; Cancelar</button>
+        </div>
       </div>
       <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
     </div>
@@ -324,20 +328,39 @@ async function handoff(){
 }
 
 // ---------- CONTADOR DE FLUXO ----------
-let contando=false,cont=0,seg=120,tick=null,inicioISO=null;
+let contando=false,pausado=false,cont=0,seg=120,tick=null,inicioISO=null;
 function tapOuIniciar(){
   const b=document.getElementById("btnTap");
   if(!contando){
-    contando=true;cont=0;seg=120;inicioISO=new Date().toISOString();
+    contando=true;pausado=false;cont=0;seg=120;inicioISO=new Date().toISOString();
     document.getElementById("cnt").style.display="block";
+    document.getElementById("ctlContagem").style.display="flex";
     b.textContent="TOQUE a cada pessoa que passar";
-    tick=setInterval(()=>{seg--;document.getElementById("tmr").textContent=`${Math.floor(seg/60)}:${String(seg%60).padStart(2,"0")}`;if(seg<=0)finalizarContagem();},1000);
-  }else{cont++;document.getElementById("cnt").textContent=cont;}
+    tick=setInterval(()=>{if(pausado)return;seg--;document.getElementById("tmr").textContent=`${Math.floor(seg/60)}:${String(seg%60).padStart(2,"0")}`;if(seg<=0)finalizarContagem();},1000);
+  }else if(!pausado){cont++;document.getElementById("cnt").textContent=cont;}
+}
+function pausarContagem(){
+  if(!contando)return;
+  pausado=!pausado;
+  document.getElementById("btnPause").innerHTML=pausado?"&#9654; Retomar":"&#9208; Pausar";
+  document.getElementById("btnTap").textContent=pausado?"PAUSADO":"TOQUE a cada pessoa que passar";
+}
+function cancelarContagem(){
+  if(!contando)return;
+  if(!confirm("Cancelar esta contagem? Os toques serão descartados."))return;
+  clearInterval(tick);contando=false;pausado=false;
+  resetContagemUI();
+}
+function resetContagemUI(){
+  const g=id=>document.getElementById(id);
+  if(g("btnTap"))g("btnTap").textContent="Iniciar contagem";
+  if(g("tmr"))g("tmr").textContent="2:00";
+  if(g("cnt"))g("cnt").style.display="none";
+  if(g("ctlContagem"))g("ctlContagem").style.display="none";
 }
 async function finalizarContagem(){
-  clearInterval(tick);contando=false;
-  document.getElementById("btnTap").textContent="Iniciar contagem";
-  document.getElementById("tmr").textContent="2:00";
+  clearInterval(tick);contando=false;pausado=false;
+  resetContagemUI();
   let lat=null,lng=null;
   try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:4000}));lat=pos.coords.latitude;lng=pos.coords.longitude;}catch(e){}
   try{
