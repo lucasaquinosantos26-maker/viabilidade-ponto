@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viabilidade de Ponto — Ótica Center</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--azul:#2E5EEA;--amarelo:#FFC72C;--verde:#0E9F6E;--verm:#D64545;--cinza:#48515f;}
+*{box-sizing:border-box;margin:0;font-family:'Segoe UI',system-ui,sans-serif}
+body{height:100vh;overflow:hidden;background:#f4f6fb}
+#map{position:absolute;inset:0;z-index:1}
+.topbar{position:absolute;top:0;left:0;right:0;z-index:1000;background:var(--azul);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.topbar b{font-size:15px}
+.topbar .sair{margin-left:auto;background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+.busca{position:absolute;top:56px;left:12px;right:12px;z-index:1000;display:flex;gap:8px;max-width:520px}
+.busca input{flex:1;padding:11px 14px;border:none;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-size:14px}
+.busca button{background:var(--azul);color:#fff;border:none;border-radius:10px;padding:0 16px;cursor:pointer;font-weight:600}
+.painel{position:absolute;top:0;right:-420px;width:400px;max-width:94vw;height:100%;background:#fff;z-index:1100;box-shadow:-4px 0 20px rgba(0,0,0,.18);transition:right .25s;display:flex;flex-direction:column}
+.painel.aberto{right:0}
+.painel header{background:var(--azul);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.painel header button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer}
+.painel .corpo{padding:16px;overflow-y:auto;flex:1}
+.card{border:1px solid #e3e8f2;border-radius:12px;padding:14px;margin-bottom:12px}
+.sem{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:-2px}
+.sem.verde{background:var(--verde)}.sem.amarelo{background:var(--amarelo)}.sem.vermelho{background:var(--verm)}
+.faixa{font-size:20px;font-weight:700;color:#1c2430}
+label{display:block;font-size:12px;color:var(--cinza);margin:10px 0 4px;font-weight:600}
+input[type=number],input[type=text]{width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px}
+.linha2{display:flex;gap:10px}.linha2>div{flex:1}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px}
+.btn.pri{background:var(--azul);color:#fff}
+.btn.amar{background:var(--amarelo);color:#1c2430}
+.btn.sec{background:#eef2fd;color:var(--azul)}
+.btn:disabled{opacity:.5;cursor:default}
+.ranking{position:absolute;bottom:0;left:0;right:0;z-index:1000;background:rgba(255,255,255,.97);border-top:2px solid var(--azul);padding:10px 12px;display:flex;gap:10px;overflow-x:auto}
+.chip{flex:0 0 auto;border:1.5px solid #d5dbe7;border-radius:12px;padding:8px 12px;cursor:pointer;background:#fff;min-width:170px}
+.chip .pos{font-weight:800;color:var(--azul)}
+.chip .end{font-size:12px;color:#1c2430;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.chip .st{font-size:11px;color:var(--cinza)}
+.chip.nr{border-color:var(--verm);opacity:.75}
+.aviso{background:#fff7e0;border:1px solid var(--amarelo);border-radius:8px;padding:9px 11px;font-size:12.5px;color:#6b5300;margin-top:10px}
+.timerbox{text-align:center;padding:8px 0}
+.timer{font-size:42px;font-weight:800;color:var(--azul);font-variant-numeric:tabular-nums}
+.contador{font-size:56px;font-weight:800;color:#1c2430;margin:6px 0}
+.tap{width:100%;padding:26px;border:none;border-radius:14px;background:var(--amarelo);font-size:20px;font-weight:800;cursor:pointer}
+.lista-f{font-size:12.5px;color:var(--cinza);margin-top:8px}
+#login{position:fixed;inset:0;z-index:2000;background:linear-gradient(135deg,var(--azul),#1a3ba8);display:flex;align-items:center;justify-content:center}
+#login .box{background:#fff;border-radius:16px;padding:28px;width:360px;max-width:92vw}
+#login h1{font-size:19px;color:#1c2430;margin-bottom:4px}
+#login p{font-size:13px;color:var(--cinza);margin-bottom:14px}
+.msg{font-size:12.5px;margin-top:10px;color:var(--verm)}
+.ok{color:var(--verde)}
+.dado-falt{display:inline-block;background:#eef2fd;color:var(--azul);border-radius:6px;padding:3px 8px;font-size:11.5px;margin:2px 3px 0 0}
+h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
+.risco{font-size:12.5px;color:var(--cinza);padding-left:14px;position:relative}
+.risco:before{content:"⚠";position:absolute;left:0;font-size:10px}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="box">
+    <h1 id="lTitulo">Entrar</h1>
+    <p>Ótica Center · acesso do candidato/franqueado</p>
+    <div id="vEntrar">
+      <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com">
+      <label>Senha</label><input type="text" id="lSenha" placeholder="senha" style="-webkit-text-security:disc">
+      <button class="btn pri" onclick="entrar()">Entrar</button>
+      <button class="btn sec" onclick="mostrarCadastro(true)">Ainda não tenho conta — criar cadastro</button>
+    </div>
+    <div id="vCadastro" style="display:none">
+      <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome">
+      <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com">
+      <label>Senha (mínimo 6 caracteres)</label><input type="text" id="cSenha" placeholder="crie uma senha" style="-webkit-text-security:disc">
+      <button class="btn pri" onclick="cadastrar()">Criar minha conta</button>
+      <button class="btn sec" onclick="mostrarCadastro(false)">Já tenho conta — entrar</button>
+    </div>
+    <div class="msg" id="lMsg"></div>
+  </div>
+</div>
+
+<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="sair()">Sair</button></div>
+<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button onclick="buscarEndereco()">Buscar</button></div>
+<div id="map"></div>
+
+<div class="painel" id="painel">
+  <header><b id="pTitulo">Ponto</b><button onclick="fecharPainel()">✕</button></header>
+  <div class="corpo" id="pCorpo"></div>
+</div>
+
+<div class="ranking" id="ranking"><span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto. Quanto mais opções, mais forte a comparação.</span></div>
+
+<script>
+const SUPA_URL="https://oytotqzwftuhentlhmae.supabase.co";
+const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95dG90cXp3ZnR1aGVudGxobWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Njg2NjksImV4cCI6MjA5NjI0NDY2OX0.gZl8g590sE6kdO7l8gTnifijYfxc6DbN8Uv5oQksaIs";
+let TOKEN=null, pontoAtivo=null, marcadores={}, mapa;
+
+// ---------- AUTH ----------
+async function authReq(path,body){
+  const r=await fetch(`${SUPA_URL}/auth/v1/${path}`,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON},body:JSON.stringify(body)});
+  return {ok:r.ok,data:await r.json()};
+}
+function mostrarCadastro(sim){
+  document.getElementById("vEntrar").style.display = sim ? "none" : "block";
+  document.getElementById("vCadastro").style.display = sim ? "block" : "none";
+  document.getElementById("lTitulo").textContent = sim ? "Criar cadastro" : "Entrar";
+  msg("");
+}
+function msg(t, ok){ const m=document.getElementById("lMsg"); m.className = "msg" + (ok ? " ok" : ""); m.textContent = t; }
+function traduzErro(d){
+  const t = (d.error_description || d.msg || d.message || "").toLowerCase();
+  if (t.includes("invalid login")) return "E-mail ou senha incorretos.";
+  if (t.includes("not confirmed")) return "E-mail ainda não confirmado — verifique sua caixa de entrada e o spam.";
+  if (t.includes("already registered")) return "Este e-mail já tem conta. Use \"Já tenho conta — entrar\".";
+  if (t.includes("at least 6")) return "A senha precisa ter pelo menos 6 caracteres.";
+  return d.error_description || d.msg || d.message || "Não foi possível concluir. Tente novamente.";
+}
+async function entrar(){
+  msg("Entrando…", true);
+  const {ok,data}=await authReq("token?grant_type=password",{email:v("lEmail"),password:v("lSenha")});
+  if(!ok)ymsg(traduzErro(data));return}
+  TOKEN=data.access_token; iniciar(data.user?.email);
+}
+async function cadastrar(){
+  if(!v("cNome")){msg("Informe seu nome completo.");return}
+  msg("Criando sua conta…", true);
+  const {ok,data}=await authReq("signup",{email:v("cEmail"),password:v("cSenha"),data:{nome:v("cNome")}});
+  if(!ok){msg(traduzErro(data));return}
+  if(data.access_token){TOKEN=data.access_token;iniciar(data.user?.email);}
+  else{
+    mostrarCadastro(false);
+    document.getElementById("lEmail").value=v("cEmail");
+    msg("Conta criada! Enviamos um link de confirmação para "+v("cEmail")+". Confirme (veja o spam) e depois entre aqui com sua senha.", true);
+  }
+}
+function sair(){TOKEN=null;location.reload()}
+function v(id){return document.getElementById(id).value.trim()}
+
+// ---------- API ----------
+async function api(fn,path,method="GET",body=null){
+  const r=await fetch(`${SUPA_URL}/functions/v1/${fn}${path}`,{method,headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+TOKEN},body:body?JSON.stringify(body):null});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d?.error?.message||("Erro "+r.status));
+  return d;
+}
+
+// ---------- MAPA ----------
+function iniciar(email){
+  document.getElementById("login").style.display="none";
+  document.getElementById("quem").textContent=email||"";
+  mapa=L.map("map",{zoomControl:false}).setView([-22.9056,-47.0608],14);
+  L.control.zoom({position:"bottomright"}).addTo(mapa);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:19}).addTo(mapa);
+  mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
+  carregarCorredores(); carregarPontos(); atualizarRanking();
+}
+async function carregarCorredores(){
+  try{
+    const cs=await api("api-viabilidade","/corredores");
+    cs.forEach(c=>{
+      const cor=c.prioridade===1?"#2E5EEA":c.prioridade===2?"#7c9af5":"#b8c6f0";
+      L.geoJSON(c.geojson,{style:{color:cor,weight:7,opacity:.75}}).bindTooltip(`Corredor recomendado: ${c.nome} (${c.cidade})`).addTo(mapa);
+    });
+  }catch(e){console.warn("corredores",e)}
+}
+async function carregarPontos(){
+  try{
+    const ps=await api("api-viabilidade","/pontos");
+    ps.forEach(p=>plotar(p));
+  }catch(e){console.warn(e)}
+}
+function plotar(p){
+  if(marcadores[p.id]) mapa.removeLayer(marcadores[p.id]);
+  const m=L.marker([p.lat,p.lng]).addTo(mapa).on("click",()=>abrirPonto(p.id));
+  marcadores[p.id]=m;
+}
+// Chave opcional do Google (Geocoding API). Preencha para busca mais precisa;
+// vazio = usa OpenStreetMap. Restrinja a chave por referrer no console do Google.
+const GOOGLE_KEY = "";
+
+// Extrai coordenadas de links do Google Maps ou de "lat, lng" colado direto
+function coordsDeTexto(q){
+  // 1) .../@-22.905,-47.060,17z  (link de navegador)
+  let m = q.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 2) ...!3d-22.905!4d-47.060  (link de lugar/compartilhar)
+  m = q.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 3) ?q=-22.905,-47.060 ou ?query=...
+  m = q.match(/[?&](?:q|query|ll|center)=(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 4) coordenadas puras coladas: "-22.905, -47.060"
+  m = q.trim().match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  return null;
+}
+
+async function geocodificar(q){
+  if (GOOGLE_KEY){
+    const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&region=br&language=pt-BR&key=${GOOGLE_KEY}`);
+    const d = await r.json();
+    if (d.status === "OK" && d.results.length){
+      const g = d.results[0];
+      return {lat: g.geometry.location.lat, lng: g.geometry.location.lng, nome: g.formatted_address};
+    }
+    return null;
+  }
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(q)}`,{headers:{"Accept-Language":"pt-BR"}});
+  const d = await r.json();
+  return d.length ? {lat:+d[0].lat, lng:+d[0].lon, nome:d[0].display_name} : null;
+}
+
+async function buscarEndereco(){
+  const q = v("qEnd"); if(!q) return;
+
+  // Link encurtado do Maps: impossível expandir pelo navegador — pedir endereço escrito
+  if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(q)){
+    alert("Esse é um link encurtado do Maps e não dá para ler as coordenadas dele.\n\nAbra o link no Maps e me traga o endereço por escrito (Rua, Número, Bairro, Cidade) — ou copie o link completo da barra de endereço, que contém a localização.");
+    return;
+  }
+
+  // Link completo do Maps ou coordenadas coladas: vai direto, sem geocodificar
+  const c = coordsDeTexto(q);
+  if (c){
+    mapa.setView([c.lat, c.lng], 18);
+    novoPonto(c.lat, c.lng, null); // reverse geocode preenche o endereço
+    return;
+  }
+
+  // Endereço escrito
+  try{
+    const g = await geocodificar(q);
+    if (!g){ alert("Endereço não encontrado. Tente o formato: Rua, Número, Bairro, Cidade — ou cole o link completo do Google Maps."); return; }
+    mapa.setView([g.lat, g.lng], 17);
+    novoPonto(g.lat, g.lng, g.nome);
+  }catch(e){
+    alert("A busca falhou agora. Verifique a conexão e tente de novo — ou toque direto no mapa para soltar o pin.");
+  }
+}
+async function novoPonto(lat,lng,endTexto){
+  let endereco=endTexto,cidade=null,uf=null;
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
+    const d=await r.json();
+    endereco=endereco||d.display_name; cidade=d.address?.city||d.address?.town||d.address?.municipality||null; uf=d.address?.state_code||null;
+  }catch(e){}
+  try{
+    const p=await api("api-viabilidade","/pontos","POST",{lat,lng,endereco,cidade,uf});
+    plotar(p); abrirPonto(p.id); atualizarRanking();
+  }catch(e){alert(e.message)}
+}
+
+// ---------- PAINEL DO PONTO ----------
+async function abrirPonto(id){
+  pontoAtivo=id;
+  const p=await api("api-viabilidade","/pontos/"+id);
+  document.getElementById("pTitulo").textContent=(p.endereco||"Ponto").split(",").slice(0,2).join(",");
+  const a=p.ultima_analise?.resultado_sanitizado;
+  document.getElementById("pCorpo").innerHTML=`
+    ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
+    <div class="card">
+      <h4 style="margin-top:0">Dados do imóvel</h4>
+      <div class="linha2">
+        <div><label>Fachada (m)</label><input type="number" id="fFach" step="0.1" value="${p.fachada_largura_m??""}"></div>
+        <div><label>Salão (m²)</label><input type="number" id="fSalao" value="${p.salao_m2??""}"></div>
+      </div>
+      <div class="linha2">
+        <div><label>Sobreloja (m²)</label><input type="number" id="fSobre" value="${p.sobreloja_m2??""}"></div>
+        <div><label>Aluguel pedido (R$)</label><input type="number" id="fAlug" value="${p.aluguel_pedido??""}"></div>
+      </div>
+      <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
+      <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
+      <button class="btn sec" onclick="salvarDados()">Salvar dados</button>
+      <button class="btn pri" onclick="analisar()">Analisar ponto</button>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
+      <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
+      <div class="timerbox">
+        <div class="timer" id="tmr">2:00</div>
+        <div class="contador" id="cnt" style="display:none">0</div>
+        <button class="tap" id="btnTap" onclick="tapOuIniciar()">Iniciar contagem</button>
+      </div>
+      <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
+    </div>
+    <button class="btn amar" onclick="handoff()">✓ Seguir para negociação</button>
+    <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
+  document.getElementById("painel").classList.add("aberto");
+  resumoFluxo();
+}
+function cardAnalise(a){
+  const nomeRec={recomendado:"Recomendado",requer_atencao:"Requer atenção",nao_recomendado:"Não recomendado"}[a.recomendacao]||a.recomendacao;
+  const mod={fluxo:"Loja de Fluxo",campanha:"Loja de Campanha",nenhum:"—"}[a.modelo_recomendado];
+  return `<div class="card">
+    <div><span class="sem ${a.semaforo}"></span><b style="font-size:16px">${nomeRec}</b> <span style="font-size:12px;color:var(--cinza)">· ${mod}${a.preliminar?" · preliminar":""}</span></div>
+    <div style="font-size:13px;color:#1c2430;margin:8px 0">${a.motivo_principal}</div>
+    ${a.aluguel_estimado?`<div class="faixa">R$ ${fmt(a.aluguel_estimado.min)} – ${fmt(a.aluguel_estimado.max)}</div><div style="font-size:11.5px;color:var(--cinza)">aluguel estimado ${a.aluguel_pedido_status?`· pedido está <b>${a.aluguel_pedido_status}</b> da faixa`:""}</div>`:""}
+    ${a.reforma_estimada?`<div style="font-size:12.5px;color:var(--cinza);margin-top:6px">Reforma estimada: R$ ${fmt(a.reforma_estimada.min)} – ${fmt(a.reforma_estimada.max)}</div>`:""}
+    ${a.fluxo?.media!=null?`<div style="font-size:12.5px;margin-top:6px">Fluxo médio: <b>${a.fluxo.media}</b> pessoas/2min (${a.fluxo.leituras_validas} leitura(s), ${a.fluxo.dias_distintos} dia(s))</div>`:""}
+    ${a.dados_faltantes?.length?`<h4>Complete para refinar</h4>${a.dados_faltantes.map(d=>`<span class="dado-falt">${d.replaceAll("_"," ")}</span>`).join("")}`:""}
+    ${a.riscos?.length?`<h4>Riscos a verificar</h4>${a.riscos.map(r=>`<div class="risco">${r}</div>`).join("")}`:""}
+  </div>`;
+}
+function fmt(n){return Number(n).toLocaleString("pt-BR")}
+function fecharPainel(){document.getElementById("painel").classList.remove("aberto")}
+
+async function salvarDados(){
+  const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked};
+  try{await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);}catch(e){alert(e.message);return}
+}
+function num(id){const x=v(id);return x===""?null:Number(x)}
+async function analisar(){
+  await salvarDados();
+  try{await api("analisar-ponto","","POST",{ponto_id:pontoAtivo});abrirPonto(pontoAtivo);atualizarRanking();}
+  catch(e){alert(e.message)}
+}
+async function handoff(){
+  if(!confirm("Encaminhar este ponto para negociação? O time de expansão será notificado."))return;
+  try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});alert(r.mensagem);fecharPainel();atualizarRanking();}
+  catch(e){alert(e.message)}
+}
+
+// ---------- CONTADOR DE FLUXO ----------
+let contando=false,cont=0,seg=120,tick=null,inicioISO=null;
+function tapOuIniciar(){
+  const b=document.getElementById("btnTap");
+  if(!contando){
+    contando=true;cont=0;seg=120;inicioISO=new Date().toISOString();
+    document.getElementById("cnt").style.display="block";
+    b.textContent="TOQUE a cada pessoa que passar";
+    tick=setInterval(()=>{seg--;document.getElementById("tmr").textContent=`${Math.floor(seg/60)}:${String(seg%60).padStart(2,"0")}`;if(seg<=0)finalizarContagem();},1000);
+  }else{cont++;document.getElementById("cnt").textContent=cont;}
+}
+async function finalizarContagem(){
+  clearInterval(tick);contando=false;
+  document.getElementById("btnTap").textContent="Iniciar contagem";
+  document.getElementById("tmr").textContent="2:00";
+  let lat=null,lng=null;
+  try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:4000}));lat=pos.coords.latitude;lng=pos.coords.longitude;}catch(e){}
+  try{
+    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:cont,inicio:inicioISO,duracao_s:120,lat,lng});
+    alert((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"Leitura registrada!\n\n")+r.proxima_orientacao);
+    resumoFluxo();
+  }catch(e){alert(e.message)}
+}
+async function resumoFluxo(){
+  try{
+    const r=await api("registrar-fluxo","?ponto_id="+pontoAtivo,"GET");
+    const el=document.getElementById("fluxoResumo"); if(!el)return;
+    el.innerHTML=`${r.leituras.length} leitura(s) · ${r.leituras_validas} válida(s) · ${r.dias_distintos} dia(s) distinto(s)`+
+      (r.media_valida!=null?` · média <b>${r.media_valida}</b>/2min`:"")+`<br>${r.proxima_orientacao}`;
+  }catch(e){}
+}
+
+// ---------- RANKING ----------
+async function atualizarRanking(){
+  try{
+    const itens=await api("api-viabilidade","/ranking");
+    const el=document.getElementById("ranking");
+    if(!itens.length){el.innerHTML='<span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto.</span>';return}
+    el.innerHTML=itens.map(i=>`<div class="chip ${i.recomendacao==="nao_recomendado"?"nr":""}" onclick="focar('${i.ponto_id}')">
+      <span class="pos">#${i.posicao}</span> <span class="sem ${i.semaforo||"amarelo"}"></span>
+      <div class="end">${(i.endereco||"Ponto").split(",").slice(0,2).join(",")}</div>
+      <div class="st">${i.recomendacao==="sem_analise"?"sem análise":i.recomendacao.replaceAll("_"," ")}${i.fachada_recuada?" · recuada":""}${i.fluxo_media!=null?` · fluxo ${i.fluxo_media}`:""}</div>
+    </div>`).join("")+
+    `<div style="flex:0 0 auto;align-self:center;font-size:11.5px;color:var(--cinza);max-width:150px">Quanto mais opções, mais forte a comparação.</div>`;
+  }catch(e){console.warn(e)}
+}
+async function focar(id){
+  const p=await api("api-viabilidade","/pontos/"+id);
+  mapa.setView([p.lat,p.lng],17); abrirPonto(id);
+}
+</script>
+</body>
+</html>
+
