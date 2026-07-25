@@ -121,7 +121,7 @@ function traduzErro(d){
 async function entrar(){
   msg("Entrando…", true);
   const {ok,data}=await authReq("token?grant_type=password",{email:v("lEmail"),password:v("lSenha")});
-  if(!ok)ymsg(traduzErro(data));return}
+  if(!ok){msg(traduzErro(data));return}
   TOKEN=data.access_token; iniciar(data.user?.email);
 }
 async function cadastrar(){
@@ -376,4 +376,3 @@ async function focar(id){
 </script>
 </body>
 </html>
-
