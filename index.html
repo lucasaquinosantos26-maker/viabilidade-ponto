@@ -6,6 +6,7 @@
 <title>Viabilidade de Ponto — Ótica Center</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 <style>
 :root{--azul:#2E5EEA;--amarelo:#FFC72C;--verde:#0E9F6E;--verm:#D64545;--cinza:#48515f;}
 *{box-sizing:border-box;margin:0;font-family:'Segoe UI',system-ui,sans-serif}
@@ -17,6 +18,8 @@ body{height:100vh;overflow:hidden;background:#f4f6fb}
 .busca{position:absolute;top:56px;left:12px;right:12px;z-index:1000;display:flex;gap:8px;max-width:520px}
 .busca input{flex:1;padding:11px 14px;border:none;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-size:14px}
 .busca button{background:var(--azul);color:#fff;border:none;border-radius:10px;padding:0 16px;cursor:pointer;font-weight:600}
+.calorbtn{background:#fff !important;color:#1c2430 !important;box-shadow:0 2px 10px rgba(0,0,0,.15);white-space:nowrap}
+.calorbtn.on{background:var(--amarelo) !important}
 .painel{position:absolute;top:0;right:-420px;width:400px;max-width:94vw;height:100%;background:#fff;z-index:1100;box-shadow:-4px 0 20px rgba(0,0,0,.18);transition:right .25s;display:flex;flex-direction:column}
 .painel.aberto{right:0}
 .painel header{background:var(--azul);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
@@ -84,7 +87,7 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
 </div>
 
 <div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="sair()">Sair</button></div>
-<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button></div>
+<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button><button id="bCalor" class="calorbtn" onclick="toggleCalor()">🔥 Calor</button></div>
 <div id="map"></div>
 
 <div class="painel" id="painel">
@@ -197,7 +200,53 @@ function iniciar(email){
   L.control.zoom({position:"bottomright"}).addTo(mapa);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:19}).addTo(mapa);
   mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
+  mapa.on("moveend",()=>{ if(!calorOn)return; clearTimeout(calorTimer); calorTimer=setTimeout(atualizarCalor,700); });
   carregarCorredores(); carregarPontos(); atualizarRanking();
+}
+
+// ---------- MAPA DE CALOR (dados reais: comércio OSM + fluxo da rede) ----------
+let heatLayer=null,calorOn=false,calorTimer=null,heatFluxo=[],overpassCache={};
+async function carregarCalorFluxo(){
+  try{const pts=await api("api-viabilidade","/calor");
+    heatFluxo=pts.map(p=>[p.lat,p.lng,Math.min(Math.max(p.peso??1,5),60)/60]);
+  }catch(e){heatFluxo=[]}
+}
+async function carregarPOIs(){
+  if(mapa.getZoom()<13) return [];
+  const b=mapa.getBounds();
+  const bbox=`${b.getSouth().toFixed(3)},${b.getWest().toFixed(3)},${b.getNorth().toFixed(3)},${b.getEast().toFixed(3)}`;
+  if(overpassCache[bbox]) return overpassCache[bbox];
+  const q=`[out:json][timeout:20];(node["shop"](${bbox});node["amenity"~"^(bank|pharmacy|restaurant|cafe|fast_food|marketplace|clinic|dentist|optician)$"](${bbox}););out skel qt 4000;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+  if(!r.ok) throw new Error("Overpass "+r.status);
+  const d=await r.json();
+  const pts=(d.elements||[]).filter(e=>e.lat&&e.lon).map(e=>[e.lat,e.lon,0.35]);
+  overpassCache[bbox]=pts;
+  return pts;
+}
+async function atualizarCalor(){
+  if(!calorOn) return;
+  try{
+    const pois=await carregarPOIs();
+    const pts=[...pois,...heatFluxo.map(p=>[p[0],p[1],Math.max(p[2],0.7)])];
+    if(heatLayer) mapa.removeLayer(heatLayer);
+    if(pts.length) heatLayer=L.heatLayer(pts,{radius:22,blur:18,maxZoom:17}).addTo(mapa);
+  }catch(e){console.warn("calor",e)}
+}
+async function toggleCalor(){
+  const b=document.getElementById("bCalor");
+  calorOn=!calorOn;
+  b.classList.toggle("on",calorOn);
+  if(calorOn){
+    b.textContent="🔥 Carregando…"; b.disabled=true;
+    if(mapa.getZoom()<13){alert("Aproxime o mapa (zoom) para ver o calor comercial da região.");}
+    await carregarCalorFluxo();
+    await atualizarCalor();
+    b.disabled=false; b.textContent="🔥 Calor ligado";
+  }else{
+    if(heatLayer){mapa.removeLayer(heatLayer);heatLayer=null;}
+    b.textContent="🔥 Calor";
+  }
 }
 async function carregarCorredores(){
   try{
