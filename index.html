@@ -234,6 +234,57 @@ function iniciar(email){
   mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
   mapa.on("moveend",()=>{ if(!calorOn)return; clearTimeout(calorTimer); calorTimer=setTimeout(atualizarCalor,700); });
   carregarCorredores(); carregarPontos(); atualizarRanking();
+  // botão do backoffice — só para o time de expansão (papel interno)
+  api("api-viabilidade","/perfil").then(pf=>{
+    if(pf?.papel==="interno"&&!document.getElementById("bExp")){
+      const b=document.createElement("button");
+      b.id="bExp"; b.className="sair"; b.style.marginLeft="0"; b.textContent="🗂 Expansão";
+      b.onclick=abrirExpansao;
+      const primeiro=document.querySelector(".topbar .sair");
+      document.querySelector(".topbar").insertBefore(b,primeiro);
+    }
+  }).catch(()=>{});
+}
+
+// ---------- PAINEL DA EXPANSÃO (papel interno — dados que o candidato nunca vê) ----------
+async function abrirExpansao(){
+  document.getElementById("pTitulo").textContent="🗂 Painel da Expansão";
+  document.getElementById("pCorpo").innerHTML='<div style="font-size:13px;color:var(--cinza)">Carregando dados internos…</div>';
+  document.getElementById("painel").classList.add("aberto");
+  try{
+    const [hs,ps]=await Promise.all([api("api-viabilidade","/admin/handoffs"),api("api-viabilidade","/admin/pontos")]);
+    const stOpts=["novo","em_analise","visitado","aprovado","reprovado"];
+    const stLabel=s=>({novo:"🆕 Novo",em_analise:"🔎 Em análise",visitado:"📍 Visitado",aprovado:"✅ Aprovado",reprovado:"❌ Reprovado"}[s]||s);
+    const fmtProj=p=>p?("R$ "+Math.round(p.min/1000)+"–"+Math.round(p.max/1000)+" mil/mês"):"—";
+    document.getElementById("pCorpo").innerHTML=`
+      <div class="card">
+        <h4 style="margin-top:0">📨 Fila de handoffs (${hs.length})</h4>
+        ${hs.length?hs.map(h=>`
+          <div style="border:1px solid #e3e8f2;border-radius:10px;padding:10px;margin-bottom:8px">
+            <b style="font-size:13px">${(h.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
+            <div style="font-size:11.5px;color:var(--cinza)">${h.cidade||""}${h.uf?"/"+h.uf:""} · ${h.bandeira||"bandeira?"} · ${h.candidato||""} · ${new Date(h.criado_em).toLocaleDateString("pt-BR")}</div>
+            <select id="st_${h.id}" style="width:100%;margin-top:6px;padding:8px;border:1px solid #d5dbe7;border-radius:8px;background:#fff">${stOpts.map(s=>`<option value="${s}" ${h.status===s?"selected":""}>${stLabel(s)}</option>`).join("")}</select>
+            <input type="text" id="pa_${h.id}" placeholder="parecer interno…" value="${(h.parecer||"").replace(/"/g,"&quot;")}" style="margin-top:6px">
+            <button class="btn sec" id="bh_${h.id}" onclick="ocupado('bh_${h.id}','Salvando…',()=>salvarHandoff('${h.id}'))">Salvar</button>
+          </div>`).join(""):'<div style="font-size:12.5px;color:var(--cinza)">Nenhum handoff na fila.</div>'}
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0">📊 Pontos da rede (${ps.length}) — visão interna</h4>
+        ${ps.map(p=>`
+          <div style="border-bottom:1px solid #eef2fd;padding:8px 0;font-size:12.5px">
+            <span class="sem ${p.semaforo||"amarelo"}"></span><b>${(p.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
+            <div style="color:var(--cinza)">${p.cidade||""} · ${p.bandeira||"—"} · ${p.candidato||""}${p.status==="handoff"?" · <b>EM NEGOCIAÇÃO</b>":""}</div>
+            <div>Score: <b>${p.score??"—"}</b>/100 · Projeção: <b>${fmtProj(p.projecao)}</b> · Fluxo: ${p.fluxo_media??"—"}/2min · ${(p.recomendacao||"").replaceAll("_"," ")}</div>
+          </div>`).join("")||'<div style="font-size:12.5px;color:var(--cinza)">Nenhum ponto cadastrado.</div>'}
+      </div>
+      <div style="font-size:11px;color:var(--verm);text-align:center;margin-top:6px">🔒 Dados internos da Diretoria de Expansão — nunca compartilhe score ou projeção com o candidato.</div>`;
+  }catch(e){document.getElementById("pCorpo").innerHTML='<div class="aviso">'+e.message+'</div>'}
+}
+async function salvarHandoff(id){
+  try{
+    await api("api-viabilidade","/admin/handoffs/"+id,"PATCH",{status:document.getElementById("st_"+id).value,parecer:v("pa_"+id)});
+    toast("✓ Handoff atualizado","ok",2500);
+  }catch(e){toast(e.message,"erro")}
 }
 
 // ---------- MAPA DE CALOR (dados reais: comércio OSM + fluxo da rede) ----------
