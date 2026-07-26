@@ -371,7 +371,7 @@ async function orientarCidade(){
     if(!ancoras.length&&i<2) await new Promise(r=>setTimeout(r,3000));
   }
   const corredores=desenharFoco(ancoras);
-  if(corredores.length) mapa.fitBounds(L.latLngBounds(corredores.map(a=>[a.lat,a.lng])).pad(0.4));
+  if(corredores.length) mapa.fitBounds(L.latLngBounds(corredores.map(a=>[a.lat,a.lng])).pad(0.4),{maxZoom:15});
   // nomeia as principais ruas (até 6 corredores, do mais forte ao mais fraco)
   const ruas=[];
   for(const c of corredores.slice(0,6)){
