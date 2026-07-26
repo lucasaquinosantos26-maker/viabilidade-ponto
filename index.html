@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Viabilidade de Ponto — Ótica Center</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2E5EEA">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
@@ -214,6 +218,7 @@ async function tratarLinkRecuperacao(){
   return true;
 }
 window.addEventListener("load",async()=>{ if(await tratarLinkRecuperacao())return; restaurarSessao(); });
+if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 
 // ---------- API ----------
 async function api(fn,path,method="GET",body=null,retry){
@@ -371,13 +376,21 @@ const RE_ANCORA=/casas? bahia|pernambucanas|riachuelo|magazine luiza|magalu|loja
 async function buscarComercio(lat,lng){
   const d=0.045;
   const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
-  const q=`[out:json][timeout:30];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 2500;(way["highway"="pedestrian"]["name"](${bbox});way["highway"="living_street"]["name"](${bbox}););out geom qt 400;`;
+  const q=`[out:json][timeout:30];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 2500;(way["highway"="pedestrian"]["name"](${bbox});way["highway"="living_street"]["name"](${bbox});way["shop"="mall"](${bbox});way["building"="mall"](${bbox}););out geom qt 500;`;
   const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
   if(!r.ok) throw new Error("Overpass "+r.status);
   const dj=await r.json();
   const els=(dj.elements||[]);
   // shoppings de verdade (mall) — a loja da rede é de RUA
   const malls=els.filter(e=>e.tags?.shop==="mall"||e.tags?.building==="mall").map(e=>({lat:e.lat??e.center?.lat,lng:e.lon??e.center?.lng??e.center?.lon})).filter(m=>m.lat&&m.lng);
+  // contorno real dos prédios de shopping (fecha a brecha de malls gigantes)
+  const M=0.0004; // ~40 m de margem
+  const mallBounds=els.filter(e=>e.geometry&&(e.tags?.shop==="mall"||e.tags?.building==="mall")).map(e=>{
+    const b={minLat:90,maxLat:-90,minLng:180,maxLng:-180};
+    e.geometry.forEach(g=>{b.minLat=Math.min(b.minLat,g.lat);b.maxLat=Math.max(b.maxLat,g.lat);b.minLng=Math.min(b.minLng,g.lon);b.maxLng=Math.max(b.maxLng,g.lon);});
+    return b;
+  });
+  const dentroDeMall=l=>mallBounds.some(b=>l.lat>=b.minLat-M&&l.lat<=b.maxLat+M&&l.lng>=b.minLng-M&&l.lng<=b.maxLng+M);
   // calçadões e ruas de pedestre (com geometria, para "adotar" lojas sem endereço)
   const pedWays=els.filter(e=>e.geometry&&(e.tags?.highway==="pedestrian"||e.tags?.highway==="living_street")&&e.tags?.name)
     .map(e=>({nome:e.tags.name,pts:e.geometry.map(g=>({lat:g.lat,lng:g.lon}))}));
@@ -385,7 +398,7 @@ async function buscarComercio(lat,lng){
   // lojas de rua (qualquer comércio), fora de shopping
   const lojas=els.filter(e=>e.tags?.shop&&e.tags.shop!=="mall").map(e=>({
     lat:e.lat??e.center?.lat, lng:e.lon??e.center?.lon, nome:e.tags.name||"", rua:e.tags["addr:street"]||null
-  })).filter(l=>l.lat&&l.lng&&!malls.some(m=>distM(l,m)<=90));
+  })).filter(l=>l.lat&&l.lng&&!malls.some(m=>distM(l,m)<=90)&&!dentroDeMall(l));
   // loja sem endereço? adota o calçadão mais próximo (até 60 m) — é onde ela está de fato
   lojas.forEach(l=>{
     if(l.rua) return;
@@ -552,6 +565,7 @@ async function novoPonto(lat,lng,endTexto){
 async function abrirPonto(id){
   pontoAtivo=id;
   const p=await api("api-viabilidade","/pontos/"+id);
+  window.__pontoAtual=p; fotosCache=[]; fluxoOkCache=false;
   document.getElementById("pTitulo").textContent=(p.endereco||"Ponto").split(",").slice(0,2).join(",");
   const a=p.ultima_analise?.resultado_sanitizado;
   document.getElementById("pCorpo").innerHTML=`
@@ -580,6 +594,17 @@ async function abrirPonto(id){
       <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
     <div class="card">
+      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
+      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">📷 Fotos do imóvel</h4>
+      <div style="font-size:12px;color:var(--cinza)">Fachada, interior, vitrine e entorno — fazem parte da análise final.</div>
+      <div id="fotosGrid" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+      <input type="file" id="fFoto" accept="image/*" capture="environment" style="display:none" onchange="enviarFoto(this)">
+      <button class="btn sec" id="bFoto" onclick="document.getElementById('fFoto').click()">📷 Adicionar foto</button>
+    </div>
+    <div class="card">
       <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
       <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
       <div style="background:#eef2fd;border-radius:10px;padding:10px 12px;margin-top:10px">
@@ -606,7 +631,44 @@ async function abrirPonto(id){
     <button class="btn" style="background:none;color:var(--verm)" id="bDescartar" onclick="ocupado('bDescartar','Descartando…',descartarPonto)">Descartar este ponto</button>
     <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
   document.getElementById("painel").classList.add("aberto");
-  resumoFluxo();
+  resumoFluxo(); listarFotos(); atualizarChecklist();
+}
+
+// ---------- FOTOS + CHECKLIST (Etapa 2) ----------
+let fotosCache=[], fluxoOkCache=false;
+async function listarFotos(){
+  try{
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/list/fotos-pontos`,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+TOKEN},body:JSON.stringify({prefix:pontoAtivo+"/",limit:24,sortBy:{column:"created_at",order:"desc"}})});
+    const d=await r.json().catch(()=>[]);
+    fotosCache=Array.isArray(d)?d.filter(f=>f.name&&f.id):[];
+  }catch(e){fotosCache=[]}
+  const g=document.getElementById("fotosGrid"); if(!g)return;
+  g.innerHTML=fotosCache.map(f=>`<a href="${SUPA_URL}/storage/v1/object/public/fotos-pontos/${pontoAtivo}/${encodeURIComponent(f.name)}" target="_blank"><img src="${SUPA_URL}/storage/v1/object/public/fotos-pontos/${pontoAtivo}/${encodeURIComponent(f.name)}" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid #e3e8f2"></a>`).join("")||'<span style="font-size:12px;color:var(--cinza)">Nenhuma foto ainda.</span>';
+  atualizarChecklist();
+}
+async function enviarFoto(inp){
+  const file=inp.files[0]; if(!file)return;
+  if(file.size>8*1024*1024){toast("Foto muito grande (máximo 8 MB).","erro");inp.value="";return}
+  const b=document.getElementById("bFoto"); b.disabled=true; b.textContent="Enviando…";
+  try{
+    const nome=Date.now()+"."+((file.name.split(".").pop()||"jpg").toLowerCase());
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/fotos-pontos/${pontoAtivo}/${nome}`,{method:"POST",headers:{"apikey":ANON,"Authorization":"Bearer "+TOKEN,"Content-Type":file.type||"image/jpeg"},body:file});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||("Erro "+r.status))}
+    toast("✓ Foto enviada","ok",2500);
+    listarFotos();
+  }catch(e){toast(e.message,"erro")}
+  b.disabled=false; b.textContent="📷 Adicionar foto"; inp.value="";
+}
+function atualizarChecklist(){
+  const p=window.__pontoAtual||{}; const el=document.getElementById("ckList"); if(!el)return;
+  const it=(ok,txt)=>`<div style="padding:3px 0">${ok?"✅":"⬜"} ${txt}</div>`;
+  el.innerHTML=
+    it(fluxoOkCache,"Contagem de fluxo (mínimo 1 leitura válida)")+
+    it(p.aluguel_pedido!=null,"Valor do aluguel pedido")+
+    it(p.carencia_meses!=null,"Carência informada")+
+    it(p.contrato_5anos===true,"Contrato de 5 anos confirmado pelo proprietário")+
+    it(fotosCache.length>0,"Fotos do imóvel"+(fotosCache.length?" ("+fotosCache.length+")":""))+
+    it(!!p.bandeira,"Bandeira pretendida");
 }
 function cardAnalise(a){
   const nomeRec={recomendado:"Recomendado",requer_atencao:"Requer atenção",nao_recomendado:"Não recomendado"}[a.recomendacao]||a.recomendacao;
@@ -696,8 +758,14 @@ async function registrarManual(){
   if(!janela&&!confirm("A contagem NÃO foi feita entre 12h e 14h?\n\nEla será registrada como fora do padrão e não entra na média. Registrar mesmo assim?"))return;
   const d=new Date();
   if(janela){d.setHours(12,30,0,0); if(d.getTime()>Date.now()) d.setDate(d.getDate()-1);}
+  // GPS também no registro manual (validação de que a pessoa esteve no local)
+  let glat=null,glng=null;
+  try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:3000}));glat=pos.coords.latitude;glng=pos.coords.longitude;}catch(e){}
+  if(glat&&window.__pontoAtual&&distM({lat:glat,lng:glng},window.__pontoAtual)>400){
+    toast("⚠ Você parece estar longe do ponto agora. A leitura será registrada, mas o ideal é contar em frente ao imóvel.","aviso",6000);
+  }
   try{
-    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:n,inicio:d.toISOString(),duracao_s:120});
+    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:n,inicio:d.toISOString(),duracao_s:120,lat:glat,lng:glng});
     toast((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"✓ Leitura registrada!\n\n")+r.proxima_orientacao,r.fora_do_padrao?"aviso":"ok",7000);
     document.getElementById("fManual").value=""; document.getElementById("fJanela").checked=false;
     resumoFluxo();
@@ -727,6 +795,7 @@ async function resumoFluxo(){
     const el=document.getElementById("fluxoResumo"); if(!el)return;
     el.innerHTML=`${r.leituras.length} leitura(s) · ${r.leituras_validas} válida(s) · ${r.dias_distintos} dia(s) distinto(s)`+
       (r.media_valida!=null?` · média <b>${r.media_valida}</b>/2min`:"")+`<br>${r.proxima_orientacao}`;
+    fluxoOkCache=(r.leituras_validas||0)>0; atualizarChecklist();
   }catch(e){}
 }
 
