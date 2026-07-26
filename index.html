@@ -315,45 +315,66 @@ function distM(a,b){
   const s=Math.sin(dLat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
 }
-async function buscarAncoras(lat,lng){
+// Mede circulação A PÉ real: densidade de lojas de rua por logradouro + calçadões + âncoras da rede.
+const RE_ANCORA=/casas? bahia|pernambucanas|riachuelo|magazine luiza|magalu|lojas marisa|renner|lojas americanas|caedu|torra/i;
+async function buscarComercio(lat,lng){
   const d=0.045;
   const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
-  const q=`[out:json][timeout:25];(nwr["name"~"Casas Bahia|Pernambucanas|Riachuelo|Magazine Luiza|Lojas Marisa|Renner|Lojas Americanas|Caedu|Lojas Torra",i](${bbox});nwr["shop"="mall"](${bbox});nwr["building"="mall"](${bbox}););out center qt 300;`;
+  const q=`[out:json][timeout:30];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 2500;(way["highway"="pedestrian"]["name"](${bbox});way["highway"="living_street"]["name"](${bbox}););out geom qt 400;`;
   const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
   if(!r.ok) throw new Error("Overpass "+r.status);
   const dj=await r.json();
-  const itens=(dj.elements||[]).map(e=>{
-    const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon, nome=e.tags?.name||"";
-    if(!la||!lo)return null;
-    const ehShopping=e.tags?.shop==="mall"||e.tags?.building==="mall"||/shopping/i.test(nome);
-    return {lat:la,lng:lo,nome,tipo:ehShopping?"mall":(/casas? bahia/i.test(nome)?"cb":"outra")};
-  }).filter(Boolean);
-  const malls=itens.filter(i=>i.tipo==="mall");
-  // regra da rede: loja de rua — descarta shoppings e âncoras dentro/coladas em shopping
-  return itens.filter(i=>i.tipo!=="mall"&&!malls.some(m=>distM(i,m)<=200));
-}
-function desenharFoco(ancoras){
-  camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
-  const corredores=[];
-  ancoras.filter(a=>a.tipo==="cb").forEach(cb=>{
-    const forca=1+ancoras.filter(a=>a!==cb&&distM(a,cb)<=300).length;
-    corredores.push({lat:cb.lat,lng:cb.lng,forca});
+  const els=(dj.elements||[]);
+  // shoppings de verdade (mall) — a loja da rede é de RUA
+  const malls=els.filter(e=>e.tags?.shop==="mall"||e.tags?.building==="mall").map(e=>({lat:e.lat??e.center?.lat,lng:e.lon??e.center?.lng??e.center?.lon})).filter(m=>m.lat&&m.lng);
+  // calçadões e ruas de pedestre (com geometria, para "adotar" lojas sem endereço)
+  const pedWays=els.filter(e=>e.geometry&&(e.tags?.highway==="pedestrian"||e.tags?.highway==="living_street")&&e.tags?.name)
+    .map(e=>({nome:e.tags.name,pts:e.geometry.map(g=>({lat:g.lat,lng:g.lon}))}));
+  const calcadoes=new Set(pedWays.map(w=>w.nome));
+  // lojas de rua (qualquer comércio), fora de shopping
+  const lojas=els.filter(e=>e.tags?.shop&&e.tags.shop!=="mall").map(e=>({
+    lat:e.lat??e.center?.lat, lng:e.lon??e.center?.lon, nome:e.tags.name||"", rua:e.tags["addr:street"]||null
+  })).filter(l=>l.lat&&l.lng&&!malls.some(m=>distM(l,m)<=90));
+  // loja sem endereço? adota o calçadão mais próximo (até 60 m) — é onde ela está de fato
+  lojas.forEach(l=>{
+    if(l.rua) return;
+    for(const w of pedWays){
+      if(w.pts.some(p=>distM(l,p)<=60)){ l.rua=w.nome; break; }
+    }
   });
-  corredores.sort((a,b)=>b.forca-a.forca);
-  corredores.forEach(c=>{
-    const op=Math.min(0.14+c.forca*0.07,0.5);
-    const ci=L.circle([c.lat,c.lng],{radius:320,color:"#D64545",weight:2,fillColor:"#D64545",fillOpacity:op})
-      .bindTooltip("🎯 Corredor prioritário — procure imóveis nesta rua").addTo(mapa);
+  // agrega por rua — o sinal de "gente a pé" é a DENSIDADE LINEAR (lojas por km),
+  // que separa calçadão (dezenas de lojas em 400 m) de avenida de carro (lojas espalhadas por km)
+  const porRua={};
+  lojas.forEach(l=>{
+    if(!l.rua) return;
+    const r=porRua[l.rua] ?? (porRua[l.rua]={rua:l.rua,n:0,anc:0,sLat:0,sLng:0,minLat:l.lat,maxLat:l.lat,minLng:l.lng,maxLng:l.lng});
+    r.n++; r.sLat+=l.lat; r.sLng+=l.lng;
+    r.minLat=Math.min(r.minLat,l.lat); r.maxLat=Math.max(r.maxLat,l.lat);
+    r.minLng=Math.min(r.minLng,l.lng); r.maxLng=Math.max(r.maxLng,l.lng);
+    if(RE_ANCORA.test(l.nome)) r.anc++;
+  });
+  return Object.values(porRua)
+    .map(r=>{
+      const extKm=Math.max(distM({lat:r.minLat,lng:r.minLng},{lat:r.maxLat,lng:r.maxLng})/1000, 0.25);
+      const densidade=r.n/extKm; // lojas por km — proxy direto de circulação a pé
+      const cal=calcadoes.has(r.rua);
+      return {rua:r.rua,nLojas:r.n,nAncoras:r.anc,lat:r.sLat/r.n,lng:r.sLng/r.n,calcadao:cal,densidade:Math.round(densidade),
+        forca:densidade*(cal?1.6:1) + r.anc*8};
+    })
+    .filter(r=>r.nLojas>=5)
+    .sort((a,b)=>b.forca-a.forca)
+    .slice(0,8);
+}
+function desenharFoco(ruas){
+  camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
+  const max=ruas[0]?.forca||1;
+  ruas.forEach((r,i)=>{
+    const op=0.12+0.38*(r.forca/max);
+    const ci=L.circle([r.lat,r.lng],{radius:280,color:"#D64545",weight:i===0?3:2,fillColor:"#D64545",fillOpacity:op})
+      .bindTooltip("🎯 "+r.rua+" — corredor prioritário para procurar imóvel").addTo(mapa);
     camadaFoco.push(ci);
   });
-  return corredores;
-}
-async function nomeDaRua(lat,lng){
-  try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
-    const d=await r.json();
-    return d.address?.road||d.address?.pedestrian||null;
-  }catch(e){return null}
+  return ruas;
 }
 async function orientarCidade(){
   const cid=v("bvInput"); const uf=v("bvUf").toUpperCase();
@@ -364,20 +385,14 @@ async function orientarCidade(){
   mapa.setView([g.lat,g.lng],14);
   let ter=null;
   try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
-  let ancoras=[];
-  for(let i=0;i<3&&!ancoras.length;i++){
-    try{ ancoras=await buscarAncoras(g.lat,g.lng); }
-    catch(e){ console.warn("ancoras tentativa "+(i+1),e); }
-    if(!ancoras.length&&i<2) await new Promise(r=>setTimeout(r,3000));
+  let ruas=[];
+  for(let i=0;i<3&&!ruas.length;i++){
+    try{ ruas=await buscarComercio(g.lat,g.lng); }
+    catch(e){ console.warn("comercio tentativa "+(i+1),e); }
+    if(!ruas.length&&i<2) await new Promise(r=>setTimeout(r,3000));
   }
-  const corredores=desenharFoco(ancoras);
-  if(corredores.length) mapa.fitBounds(L.latLngBounds(corredores.map(a=>[a.lat,a.lng])).pad(0.4),{maxZoom:15});
-  // nomeia as principais ruas (até 6 corredores, do mais forte ao mais fraco)
-  const ruas=[];
-  for(const c of corredores.slice(0,6)){
-    const r=await nomeDaRua(c.lat,c.lng);
-    if(r&&!ruas.find(x=>x.rua===r)) ruas.push({rua:r,forca:c.forca});
-  }
+  desenharFoco(ruas);
+  if(ruas.length) mapa.fitBounds(L.latLngBounds(ruas.map(a=>[a.lat,a.lng])).pad(0.3),{maxZoom:15});
   document.getElementById("pTitulo").textContent="🧭 Onde procurar em "+(ter?.cidade||cid);
   document.getElementById("pCorpo").innerHTML=`
     <div class="card" style="border-color:${ter?.status==="aberta"?"var(--verde)":"var(--amarelo)"}">
@@ -386,8 +401,8 @@ async function orientarCidade(){
     </div>
     <div class="card">
       <h4 style="margin-top:0">📍 Principais ruas para procurar</h4>
-      ${ruas.length?ruas.map((r,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef2fd;font-size:13.5px"><b style="color:var(--verm)">#${i+1}</b><span style="flex:1"><b>${r.rua}</b></span><span style="font-size:11px;color:${r.forca>=3?"var(--verm)":"var(--cinza)"};font-weight:600">${r.forca>=3?"corredor forte":"corredor"}</span></div>`).join(""):'<div class="aviso">Não conseguimos identificar corredores nesta área do mapa. Comece pelo calçadão/centro de comércio popular da cidade — e reabra o 🧭 se quiser tentar outra região.</div>'}
-      <div style="font-size:12.5px;color:var(--cinza);margin-top:10px">Os <b>círculos vermelhos</b> no mapa marcam esses corredores — quanto <b>mais forte o vermelho</b>, mais prioritária a rua. Procure imóveis <b>dentro do círculo</b>: mesma calçada ou em frente. Lojas de shopping ficam fora do perfil da rede e já foram descartadas.</div>
+      ${ruas.length?ruas.slice(0,6).map((r,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef2fd;font-size:13.5px"><b style="color:var(--verm)">#${i+1}</b><span style="flex:1"><b>${r.rua}</b>${r.calcadao?' <span style="font-size:10.5px;background:#fdeaea;color:var(--verm);border-radius:5px;padding:1px 6px;font-weight:700">CALÇADÃO</span>':""}</span><span style="font-size:11px;color:var(--cinza);font-weight:600">${r.densidade} lojas/km</span></div>`).join(""):'<div class="aviso">Não conseguimos medir a circulação nesta área do mapa. Comece pelo calçadão/centro de comércio popular da cidade — e reabra o 🧭 se quiser tentar outra região.</div>'}
+      <div style="font-size:12.5px;color:var(--cinza);margin-top:10px">Ranking medido pela <b>circulação de pessoas a pé</b>: concentração real de comércio de rua e calçadões (shoppings e lojas dentro de shopping são descartados). Os <b>círculos vermelhos</b> no mapa marcam essas ruas — quanto <b>mais forte o vermelho</b>, mais gente passa a pé. Procure imóveis <b>dentro do círculo</b>.</div>
       <h4>O que procurar no imóvel</h4>
       <div class="risco">Rua ou calçadão de comércio popular, com gente a pé</div>
       <div class="risco">Fachada de 4 m ou mais, sem recuo da calçada</div>
