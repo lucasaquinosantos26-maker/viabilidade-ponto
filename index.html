@@ -92,11 +92,29 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
   </div>
 </div>
 
-<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="sair()">Sair</button></div>
+<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="abrirOrientacao()">🧭 Onde procurar</button><button class="sair" style="margin-left:0" onclick="sair()">Sair</button></div>
 <div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button><button id="bCalor" class="calorbtn" onclick="toggleCalor()">🔥 Calor</button></div>
 <div id="map"></div>
 
 <div id="toasts"></div>
+<div id="boasvindas" style="display:none;position:fixed;inset:0;z-index:1900;background:rgba(15,23,42,.55);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:92vw">
+    <div id="bvPergunta">
+      <h1 style="font-size:18px;color:#1c2430">Bem-vindo! 👋</h1>
+      <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Você já tem um imóvel em vista para a sua loja?</p>
+      <button class="btn pri" onclick="fecharBoasVindas();toast('Busque o endereço ou toque no mapa para marcar o seu ponto.','ok',6000)">Sim — vou marcar no mapa</button>
+      <button class="btn amar" onclick="document.getElementById('bvPergunta').style.display='none';document.getElementById('bvCidade').style.display='block'">Ainda não — quero orientação de onde procurar</button>
+    </div>
+    <div id="bvCidade" style="display:none">
+      <h1 style="font-size:18px;color:#1c2430">Onde você quer abrir a loja?</h1>
+      <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Vamos verificar o perfil da cidade e marcar no mapa as ruas onde a busca deve se concentrar.</p>
+      <label>Cidade</label><input type="text" id="bvInput" placeholder="ex.: Sorocaba">
+      <label>Estado (UF)</label><input type="text" id="bvUf" placeholder="ex.: SP" maxlength="2">
+      <button class="btn pri" id="bOrientar" onclick="ocupado('bOrientar','Analisando a cidade…',orientarCidade)">Ver ruas de foco</button>
+      <button class="btn sec" onclick="fecharBoasVindas()">Deixar para depois</button>
+    </div>
+  </div>
+</div>
 <div class="painel" id="painel">
   <header><b id="pTitulo">Ponto</b><button onclick="fecharPainel()">✕</button></header>
   <div class="corpo" id="pCorpo"></div>
@@ -275,7 +293,77 @@ async function carregarPontos(){
   try{
     const ps=await api("api-viabilidade","/pontos");
     ps.forEach(p=>plotar(p));
+    if(!ps.length){
+      document.getElementById("bvPergunta").style.display="block";
+      document.getElementById("bvCidade").style.display="none";
+      document.getElementById("boasvindas").style.display="flex";
+    }
   }catch(e){console.warn(e)}
+}
+
+// ---------- ORIENTAÇÃO TERRITORIAL (Etapa 1 — onde procurar) ----------
+let camadaFoco=[];
+function abrirOrientacao(){
+  document.getElementById("bvPergunta").style.display="none";
+  document.getElementById("bvCidade").style.display="block";
+  document.getElementById("boasvindas").style.display="flex";
+}
+function fecharBoasVindas(){document.getElementById("boasvindas").style.display="none";}
+async function buscarAncoras(lat,lng){
+  const d=0.045;
+  const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
+  const q=`[out:json][timeout:25];nwr["name"~"Casas Bahia|Pernambucanas|Riachuelo|Magazine Luiza|Lojas Marisa|Renner|Lojas Americanas|Caedu|Lojas Torra",i](${bbox});out center qt 200;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+  if(!r.ok) throw new Error("Overpass "+r.status);
+  const dj=await r.json();
+  return (dj.elements||[]).map(e=>{
+    const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon, nome=e.tags?.name||"";
+    return la&&lo?{lat:la,lng:lo,nome,tipo:/casas? bahia/i.test(nome)?"cb":"outra"}:null;
+  }).filter(Boolean);
+}
+function desenharFoco(ancoras){
+  camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
+  ancoras.forEach(a=>{
+    const m=L.circleMarker([a.lat,a.lng],{radius:7,weight:2,color:"#fff",fillColor:a.tipo==="cb"?"#D64545":"#e8a200",fillOpacity:.95}).bindTooltip(a.nome).addTo(mapa);
+    camadaFoco.push(m);
+    if(a.tipo==="cb"){
+      const c=L.circle([a.lat,a.lng],{radius:300,color:"#2E5EEA",weight:2,dashArray:"6 6",fillColor:"#2E5EEA",fillOpacity:.07}).bindTooltip("🎯 Corredor de foco — procure imóveis nesta rua").addTo(mapa);
+      camadaFoco.push(c);
+    }
+  });
+}
+async function orientarCidade(){
+  const cid=v("bvInput"); const uf=v("bvUf").toUpperCase();
+  if(!cid){toast("Digite a cidade.","erro");return}
+  const g=await geocodificar(cid+(uf?", "+uf:"")+", Brasil");
+  if(!g){toast("Cidade não encontrada no mapa. Confira a grafia.","erro");return}
+  fecharBoasVindas();
+  mapa.setView([g.lat,g.lng],14);
+  let ter=null;
+  try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
+  let ancoras=[];
+  try{ ancoras=await buscarAncoras(g.lat,g.lng); }catch(e){console.warn("ancoras",e)}
+  desenharFoco(ancoras);
+  const cbs=ancoras.filter(a=>a.tipo==="cb");
+  if(cbs.length) mapa.fitBounds(L.latLngBounds(cbs.map(a=>[a.lat,a.lng])).pad(0.4));
+  document.getElementById("pTitulo").textContent="🧭 Onde procurar em "+(ter?.cidade||cid);
+  document.getElementById("pCorpo").innerHTML=`
+    <div class="card" style="border-color:${ter?.status==="aberta"?"var(--verde)":"var(--amarelo)"}">
+      <b>${ter?.status==="aberta"?"✅ Cidade dentro do perfil da rede":ter?.status==="em_espera"?"⚠️ Converse com o time de expansão antes":"ℹ️ Cidade a validar com a expansão"}</b>
+      <div style="font-size:13px;color:#1c2430;margin-top:6px">${ter?.mensagem||"Siga os corredores marcados no mapa."}</div>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">🎯 Ruas de foco — ${cbs.length} corredor${cbs.length===1?"":"es"} no mapa</h4>
+      <div style="font-size:13px;color:var(--cinza)">Os <b>círculos azuis</b> marcam onde há <b>Casas Bahia</b> — presente em 100% dos corredores de sucesso da rede. Concentre a busca de imóveis <b>dentro desses círculos</b>: mesma rua, mesma calçada ou em frente. Pontos vermelhos = Casas Bahia · pontos amarelos = outras âncoras (Pernambucanas, Riachuelo, Magalu…). Quanto mais âncoras juntas, mais forte o corredor.</div>
+      ${cbs.length?"":'<div class="aviso">Não encontramos Casas Bahia mapeada nesta área. Vá ao calçadão/centro comercial popular da cidade e procure onde ela está — a busca deve começar ali. Você também pode reabrir o 🧭 com o mapa em outra região.</div>'}
+      <h4>O que procurar no imóvel</h4>
+      <div class="risco">Rua ou calçadão de comércio popular, com gente a pé</div>
+      <div class="risco">Fachada de 4 m ou mais, sem recuo da calçada</div>
+      <div class="risco">Salão a partir de ~40 m²</div>
+      <div class="risco">Proprietário aberto a contrato de 5 anos</div>
+      <button class="btn pri" onclick="fecharPainel();toast('Achou um imóvel? Toque nele no mapa para registrar e analisar.','ok',6000)">Entendi — explorar o mapa</button>
+    </div>`;
+  document.getElementById("painel").classList.add("aberto");
 }
 function plotar(p){
   if(marcadores[p.id]) mapa.removeLayer(marcadores[p.id]);
