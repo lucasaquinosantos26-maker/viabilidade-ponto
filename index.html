@@ -20,6 +20,12 @@ body{height:100vh;overflow:hidden;background:#f4f6fb}
 .busca button{background:var(--azul);color:#fff;border:none;border-radius:10px;padding:0 16px;cursor:pointer;font-weight:600}
 .calorbtn{background:#fff !important;color:#1c2430 !important;box-shadow:0 2px 10px rgba(0,0,0,.15);white-space:nowrap}
 .calorbtn.on{background:var(--amarelo) !important}
+#toasts{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:3000;display:flex;flex-direction:column;gap:8px;width:min(92vw,420px);pointer-events:none}
+.toast{background:#374151;color:#fff;padding:12px 14px;border-radius:10px;font-size:13.5px;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:pre-line;animation:tin .2s}
+.toast.ok{background:var(--verde)}
+.toast.erro{background:var(--verm)}
+.toast.aviso{background:#8a6d00}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .painel{position:absolute;top:0;right:-420px;width:400px;max-width:94vw;height:100%;background:#fff;z-index:1100;box-shadow:-4px 0 20px rgba(0,0,0,.18);transition:right .25s;display:flex;flex-direction:column}
 .painel.aberto{right:0}
 .painel header{background:var(--azul);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
@@ -69,16 +75,16 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
     <h1 id="lTitulo">Entrar</h1>
     <p>Ótica Center · acesso do candidato/franqueado</p>
     <div id="vEntrar">
-      <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com">
-      <label>Senha</label><input type="password" id="lSenha" placeholder="senha">
+      <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com" autocomplete="username" inputmode="email">
+      <label>Senha</label><input type="password" id="lSenha" placeholder="senha" autocomplete="current-password">
       <button class="btn pri" id="bEntrar" onclick="ocupado('bEntrar','Entrando…',entrar)">Entrar</button>
       <button class="btn sec" onclick="mostrarCadastro(true)">Ainda não tenho conta — criar cadastro</button>
       <button class="btn sec" style="background:none" onclick="esqueciSenha()">Esqueci minha senha</button>
     </div>
     <div id="vCadastro" style="display:none">
-      <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome">
-      <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com">
-      <label>Senha (mínimo 6 caracteres)</label><input type="password" id="cSenha" placeholder="crie uma senha">
+      <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome" autocomplete="name">
+      <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com" autocomplete="email" inputmode="email">
+      <label>Senha (mínimo 6 caracteres)</label><input type="password" id="cSenha" placeholder="crie uma senha" autocomplete="new-password">
       <button class="btn pri" id="bCadastrar" onclick="ocupado('bCadastrar','Criando…',cadastrar)">Criar minha conta</button>
       <button class="btn sec" onclick="mostrarCadastro(false)">Já tenho conta — entrar</button>
     </div>
@@ -90,6 +96,7 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
 <div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button><button id="bCalor" class="calorbtn" onclick="toggleCalor()">🔥 Calor</button></div>
 <div id="map"></div>
 
+<div id="toasts"></div>
 <div class="painel" id="painel">
   <header><b id="pTitulo">Ponto</b><button onclick="fecharPainel()">✕</button></header>
   <div class="corpo" id="pCorpo"></div>
@@ -144,6 +151,13 @@ function sair(){TOKEN=null;try{localStorage.removeItem("oc_sessao")}catch(e){};l
 function v(id){return document.getElementById(id).value.trim()}
 
 // ---------- SESSÃO / UTIL ----------
+function toast(txt,tipo,ms){
+  const c=document.getElementById("toasts"); if(!c)return;
+  const el=document.createElement("div"); el.className="toast "+(tipo||"erro"); el.textContent=txt;
+  c.appendChild(el); setTimeout(()=>el.remove(),ms||5000);
+}
+// alerts nativos viram toasts (não congelam a tela); confirm() continua nativo para decisões
+window.alert=(t)=>toast(String(t),"aviso");
 async function ocupado(id,rotulo,fn){
   const b=document.getElementById(id); if(!b||b.disabled)return;
   const t=b.innerHTML; b.disabled=true; b.innerHTML=rotulo;
@@ -430,12 +444,13 @@ async function salvarDados(){
   faixaOk(body.salao_m2,5,2000,"Salão em m²");
   faixaOk(body.sobreloja_m2,0,1000,"Sobreloja em m²");
   faixaOk(body.aluguel_pedido,0,200000,"Aluguel em R$");
-  if(erros.length){alert("Confira os valores:\n• "+erros.join("\n• "));return}
+  if(erros.length){toast("Confira os valores:\n• "+erros.join("\n• "),"erro");return}
   try{
     await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);
     const anc=v("fAncoras");
     await api("api-viabilidade","/enriquecimento/"+pontoAtivo,"POST",{ancoras:anc?anc.split(",").map(s=>s.trim()).filter(Boolean):[],concorrente_lider_antes:document.getElementById("fConc").checked});
-  }catch(e){alert(e.message);return}
+    toast("✓ Dados salvos","ok",2500);
+  }catch(e){toast(e.message,"erro");return}
 }
 async function descartarPonto(){
   if(!confirm("Descartar este ponto? Ele sai do mapa e do ranking."))return;
@@ -454,8 +469,8 @@ async function analisar(){
 }
 async function handoff(){
   if(!confirm("Encaminhar este ponto para negociação? O time de expansão será notificado."))return;
-  try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});alert(r.mensagem);fecharPainel();atualizarRanking();}
-  catch(e){alert(e.message)}
+  try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});toast(r.mensagem,"ok");fecharPainel();atualizarRanking();}
+  catch(e){toast(e.message,"erro")}
 }
 
 // ---------- CONTADOR DE FLUXO ----------
@@ -491,10 +506,10 @@ async function registrarManual(){
   if(janela){d.setHours(12,30,0,0); if(d.getTime()>Date.now()) d.setDate(d.getDate()-1);}
   try{
     const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:n,inicio:d.toISOString(),duracao_s:120});
-    alert((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"Leitura registrada!\n\n")+r.proxima_orientacao);
+    toast((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"✓ Leitura registrada!\n\n")+r.proxima_orientacao,r.fora_do_padrao?"aviso":"ok",7000);
     document.getElementById("fManual").value=""; document.getElementById("fJanela").checked=false;
     resumoFluxo();
-  }catch(e){alert(e.message)}
+  }catch(e){toast(e.message,"erro")}
 }
 function resetContagemUI(){
   const g=id=>document.getElementById(id);
@@ -510,9 +525,9 @@ async function finalizarContagem(){
   try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:4000}));lat=pos.coords.latitude;lng=pos.coords.longitude;}catch(e){}
   try{
     const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:cont,inicio:inicioISO,duracao_s:120,lat,lng});
-    alert((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"Leitura registrada!\n\n")+r.proxima_orientacao);
+    toast((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"✓ Leitura registrada!\n\n")+r.proxima_orientacao,r.fora_do_padrao?"aviso":"ok",7000);
     resumoFluxo();
-  }catch(e){alert(e.message)}
+  }catch(e){toast(e.message,"erro")}
 }
 async function resumoFluxo(){
   try{
