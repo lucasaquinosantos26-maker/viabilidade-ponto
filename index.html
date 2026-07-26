@@ -30,7 +30,7 @@ body{height:100vh;overflow:hidden;background:#f4f6fb}
 .sem.verde{background:var(--verde)}.sem.amarelo{background:var(--amarelo)}.sem.vermelho{background:var(--verm)}
 .faixa{font-size:20px;font-weight:700;color:#1c2430}
 label{display:block;font-size:12px;color:var(--cinza);margin:10px 0 4px;font-weight:600}
-input[type=number],input[type=text]{width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px}
+input[type=number],input[type=text],input[type=password]{width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px}
 .linha2{display:flex;gap:10px}.linha2>div{flex:1}
 .chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px}
 .btn{width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px}
@@ -70,7 +70,7 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
     <p>Ótica Center · acesso do candidato/franqueado</p>
     <div id="vEntrar">
       <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com">
-      <label>Senha</label><input type="text" id="lSenha" placeholder="senha" style="-webkit-text-security:disc">
+      <label>Senha</label><input type="password" id="lSenha" placeholder="senha">
       <button class="btn pri" id="bEntrar" onclick="ocupado('bEntrar','Entrando…',entrar)">Entrar</button>
       <button class="btn sec" onclick="mostrarCadastro(true)">Ainda não tenho conta — criar cadastro</button>
       <button class="btn sec" style="background:none" onclick="esqueciSenha()">Esqueci minha senha</button>
@@ -78,7 +78,7 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
     <div id="vCadastro" style="display:none">
       <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome">
       <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com">
-      <label>Senha (mínimo 6 caracteres)</label><input type="text" id="cSenha" placeholder="crie uma senha" style="-webkit-text-security:disc">
+      <label>Senha (mínimo 6 caracteres)</label><input type="password" id="cSenha" placeholder="crie uma senha">
       <button class="btn pri" id="bCadastrar" onclick="ocupado('bCadastrar','Criando…',cadastrar)">Criar minha conta</button>
       <button class="btn sec" onclick="mostrarCadastro(false)">Já tenho conta — entrar</button>
     </div>
@@ -368,6 +368,9 @@ async function abrirPonto(id){
       </div>
       <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
       <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
+      <label>Lojas âncora por perto (ex.: Casas Bahia, Pernambucanas — ou escreva "nenhuma")</label>
+      <input type="text" id="fAncoras" value="${(p.enriquecimento?.ancoras||[]).join(", ")}">
+      <div class="chk"><input type="checkbox" id="fConc" ${p.enriquecimento?.concorrente_lider_antes?"checked":""}><span>Tem ótica concorrente forte <b>antes</b> do ponto, no mesmo trajeto</span></div>
       <button class="btn sec" id="bSalvar" onclick="ocupado('bSalvar','Salvando…',salvarDados)">Salvar dados</button>
       <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
@@ -395,6 +398,7 @@ async function abrirPonto(id){
       <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
     </div>
     <button class="btn amar" id="bHandoff" onclick="ocupado('bHandoff','Enviando…',handoff)">✓ Seguir para negociação</button>
+    <button class="btn" style="background:none;color:var(--verm)" id="bDescartar" onclick="ocupado('bDescartar','Descartando…',descartarPonto)">Descartar este ponto</button>
     <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
   document.getElementById("painel").classList.add("aberto");
   resumoFluxo();
@@ -420,7 +424,27 @@ function fecharPainel(){
 
 async function salvarDados(){
   const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked};
-  try{await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);}catch(e){alert(e.message);return}
+  const erros=[];
+  const faixaOk=(x,min,max,nome)=>{if(x!=null&&(x<min||x>max))erros.push(nome+" (entre "+min+" e "+max+")")};
+  faixaOk(body.fachada_largura_m,0.5,30,"Fachada em metros");
+  faixaOk(body.salao_m2,5,2000,"Salão em m²");
+  faixaOk(body.sobreloja_m2,0,1000,"Sobreloja em m²");
+  faixaOk(body.aluguel_pedido,0,200000,"Aluguel em R$");
+  if(erros.length){alert("Confira os valores:\n• "+erros.join("\n• "));return}
+  try{
+    await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);
+    const anc=v("fAncoras");
+    await api("api-viabilidade","/enriquecimento/"+pontoAtivo,"POST",{ancoras:anc?anc.split(",").map(s=>s.trim()).filter(Boolean):[],concorrente_lider_antes:document.getElementById("fConc").checked});
+  }catch(e){alert(e.message);return}
+}
+async function descartarPonto(){
+  if(!confirm("Descartar este ponto? Ele sai do mapa e do ranking."))return;
+  try{
+    await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",{status:"descartado"});
+    if(marcadores[pontoAtivo]){mapa.removeLayer(marcadores[pontoAtivo]);delete marcadores[pontoAtivo];}
+    document.getElementById("painel").classList.remove("aberto");
+    atualizarRanking();
+  }catch(e){alert(e.message)}
 }
 function num(id){const x=v(id);return x===""?null:Number(x)}
 async function analisar(){
@@ -460,7 +484,7 @@ function cancelarContagem(){
 }
 async function registrarManual(){
   const n=num("fManual");
-  if(n==null||n<0){alert("Informe quantas pessoas passaram nos 2 minutos.");return}
+  if(n==null||n<0||n>500){alert("Informe quantas pessoas passaram nos 2 minutos (0 a 500).");return}
   const janela=document.getElementById("fJanela").checked;
   if(!janela&&!confirm("A contagem NÃO foi feita entre 12h e 14h?\n\nEla será registrada como fora do padrão e não entra na média. Registrar mesmo assim?"))return;
   const d=new Date();
