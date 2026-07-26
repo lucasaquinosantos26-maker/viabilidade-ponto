@@ -309,28 +309,51 @@ function abrirOrientacao(){
   document.getElementById("boasvindas").style.display="flex";
 }
 function fecharBoasVindas(){document.getElementById("boasvindas").style.display="none";}
+function distM(a,b){
+  const R=6371000,rad=Math.PI/180;
+  const dLat=(b.lat-a.lat)*rad,dLng=(b.lng-a.lng)*rad;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
 async function buscarAncoras(lat,lng){
   const d=0.045;
   const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
-  const q=`[out:json][timeout:25];nwr["name"~"Casas Bahia|Pernambucanas|Riachuelo|Magazine Luiza|Lojas Marisa|Renner|Lojas Americanas|Caedu|Lojas Torra",i](${bbox});out center qt 200;`;
+  const q=`[out:json][timeout:25];(nwr["name"~"Casas Bahia|Pernambucanas|Riachuelo|Magazine Luiza|Lojas Marisa|Renner|Lojas Americanas|Caedu|Lojas Torra",i](${bbox});nwr["shop"="mall"](${bbox});nwr["building"="mall"](${bbox}););out center qt 300;`;
   const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
   if(!r.ok) throw new Error("Overpass "+r.status);
   const dj=await r.json();
-  return (dj.elements||[]).map(e=>{
+  const itens=(dj.elements||[]).map(e=>{
     const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon, nome=e.tags?.name||"";
-    return la&&lo?{lat:la,lng:lo,nome,tipo:/casas? bahia/i.test(nome)?"cb":"outra"}:null;
+    if(!la||!lo)return null;
+    const ehShopping=e.tags?.shop==="mall"||e.tags?.building==="mall"||/shopping/i.test(nome);
+    return {lat:la,lng:lo,nome,tipo:ehShopping?"mall":(/casas? bahia/i.test(nome)?"cb":"outra")};
   }).filter(Boolean);
+  const malls=itens.filter(i=>i.tipo==="mall");
+  // regra da rede: loja de rua — descarta shoppings e âncoras dentro/coladas em shopping
+  return itens.filter(i=>i.tipo!=="mall"&&!malls.some(m=>distM(i,m)<=200));
 }
 function desenharFoco(ancoras){
   camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
-  ancoras.forEach(a=>{
-    const m=L.circleMarker([a.lat,a.lng],{radius:7,weight:2,color:"#fff",fillColor:a.tipo==="cb"?"#D64545":"#e8a200",fillOpacity:.95}).bindTooltip(a.nome).addTo(mapa);
-    camadaFoco.push(m);
-    if(a.tipo==="cb"){
-      const c=L.circle([a.lat,a.lng],{radius:300,color:"#2E5EEA",weight:2,dashArray:"6 6",fillColor:"#2E5EEA",fillOpacity:.07}).bindTooltip("🎯 Corredor de foco — procure imóveis nesta rua").addTo(mapa);
-      camadaFoco.push(c);
-    }
+  const corredores=[];
+  ancoras.filter(a=>a.tipo==="cb").forEach(cb=>{
+    const forca=1+ancoras.filter(a=>a!==cb&&distM(a,cb)<=300).length;
+    corredores.push({lat:cb.lat,lng:cb.lng,forca});
   });
+  corredores.sort((a,b)=>b.forca-a.forca);
+  corredores.forEach(c=>{
+    const op=Math.min(0.14+c.forca*0.07,0.5);
+    const ci=L.circle([c.lat,c.lng],{radius:320,color:"#D64545",weight:2,fillColor:"#D64545",fillOpacity:op})
+      .bindTooltip("🎯 Corredor prioritário — procure imóveis nesta rua").addTo(mapa);
+    camadaFoco.push(ci);
+  });
+  return corredores;
+}
+async function nomeDaRua(lat,lng){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
+    const d=await r.json();
+    return d.address?.road||d.address?.pedestrian||null;
+  }catch(e){return null}
 }
 async function orientarCidade(){
   const cid=v("bvInput"); const uf=v("bvUf").toUpperCase();
@@ -347,9 +370,14 @@ async function orientarCidade(){
     catch(e){ console.warn("ancoras tentativa "+(i+1),e); }
     if(!ancoras.length&&i<2) await new Promise(r=>setTimeout(r,3000));
   }
-  desenharFoco(ancoras);
-  const cbs=ancoras.filter(a=>a.tipo==="cb");
-  if(cbs.length) mapa.fitBounds(L.latLngBounds(cbs.map(a=>[a.lat,a.lng])).pad(0.4));
+  const corredores=desenharFoco(ancoras);
+  if(corredores.length) mapa.fitBounds(L.latLngBounds(corredores.map(a=>[a.lat,a.lng])).pad(0.4));
+  // nomeia as principais ruas (até 6 corredores, do mais forte ao mais fraco)
+  const ruas=[];
+  for(const c of corredores.slice(0,6)){
+    const r=await nomeDaRua(c.lat,c.lng);
+    if(r&&!ruas.find(x=>x.rua===r)) ruas.push({rua:r,forca:c.forca});
+  }
   document.getElementById("pTitulo").textContent="🧭 Onde procurar em "+(ter?.cidade||cid);
   document.getElementById("pCorpo").innerHTML=`
     <div class="card" style="border-color:${ter?.status==="aberta"?"var(--verde)":"var(--amarelo)"}">
@@ -357,9 +385,9 @@ async function orientarCidade(){
       <div style="font-size:13px;color:#1c2430;margin-top:6px">${ter?.mensagem||"Siga os corredores marcados no mapa."}</div>
     </div>
     <div class="card">
-      <h4 style="margin-top:0">🎯 Ruas de foco — ${cbs.length} corredor${cbs.length===1?"":"es"} no mapa</h4>
-      <div style="font-size:13px;color:var(--cinza)">Os <b>círculos azuis</b> marcam onde há <b>Casas Bahia</b> — presente em 100% dos corredores de sucesso da rede. Concentre a busca de imóveis <b>dentro desses círculos</b>: mesma rua, mesma calçada ou em frente. Pontos vermelhos = Casas Bahia · pontos amarelos = outras âncoras (Pernambucanas, Riachuelo, Magalu…). Quanto mais âncoras juntas, mais forte o corredor.</div>
-      ${cbs.length?"":'<div class="aviso">Não encontramos Casas Bahia mapeada nesta área. Vá ao calçadão/centro comercial popular da cidade e procure onde ela está — a busca deve começar ali. Você também pode reabrir o 🧭 com o mapa em outra região.</div>'}
+      <h4 style="margin-top:0">📍 Principais ruas para procurar</h4>
+      ${ruas.length?ruas.map((r,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef2fd;font-size:13.5px"><b style="color:var(--verm)">#${i+1}</b><span style="flex:1"><b>${r.rua}</b></span><span style="font-size:11px;color:${r.forca>=3?"var(--verm)":"var(--cinza)"};font-weight:600">${r.forca>=3?"corredor forte":"corredor"}</span></div>`).join(""):'<div class="aviso">Não conseguimos identificar corredores nesta área do mapa. Comece pelo calçadão/centro de comércio popular da cidade — e reabra o 🧭 se quiser tentar outra região.</div>'}
+      <div style="font-size:12.5px;color:var(--cinza);margin-top:10px">Os <b>círculos vermelhos</b> no mapa marcam esses corredores — quanto <b>mais forte o vermelho</b>, mais prioritária a rua. Procure imóveis <b>dentro do círculo</b>: mesma calçada ou em frente. Lojas de shopping ficam fora do perfil da rede e já foram descartadas.</div>
       <h4>O que procurar no imóvel</h4>
       <div class="risco">Rua ou calçadão de comércio popular, com gente a pé</div>
       <div class="risco">Fachada de 4 m ou mais, sem recuo da calçada</div>
