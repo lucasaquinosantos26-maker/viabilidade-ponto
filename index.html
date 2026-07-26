@@ -380,6 +380,11 @@ async function abrirPonto(id){
         <div><label>Sobreloja (m²)</label><input type="number" id="fSobre" value="${p.sobreloja_m2??""}"></div>
         <div><label>Aluguel pedido (R$)</label><input type="number" id="fAlug" value="${p.aluguel_pedido??""}"></div>
       </div>
+      <div class="linha2">
+        <div><label>Bandeira pretendida</label><select id="fBand" style="width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px;background:#fff"><option value="">— selecionar —</option>${["Center","Rubi","Mil","XT","Extra","Vale","Big","Bela","Mais Óptica","Multi"].map(b=>`<option ${p.bandeira===b?"selected":""}>${b}</option>`).join("")}</select></div>
+        <div><label>Carência (meses)</label><input type="number" id="fCar" min="0" max="24" value="${p.carencia_meses??""}"></div>
+      </div>
+      <div class="chk"><input type="checkbox" id="f5anos" ${p.contrato_5anos?"checked":""}><span>Proprietário aceita contrato mínimo de <b>5 anos</b></span></div>
       <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
       <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
       <label>Lojas âncora por perto (ex.: Casas Bahia, Pernambucanas — ou escreva "nenhuma")</label>
@@ -437,13 +442,14 @@ function fecharPainel(){
 }
 
 async function salvarDados(){
-  const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked};
+  const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked,bandeira:v("fBand")||null,carencia_meses:num("fCar"),contrato_5anos:document.getElementById("f5anos").checked};
   const erros=[];
   const faixaOk=(x,min,max,nome)=>{if(x!=null&&(x<min||x>max))erros.push(nome+" (entre "+min+" e "+max+")")};
   faixaOk(body.fachada_largura_m,0.5,30,"Fachada em metros");
   faixaOk(body.salao_m2,5,2000,"Salão em m²");
   faixaOk(body.sobreloja_m2,0,1000,"Sobreloja em m²");
   faixaOk(body.aluguel_pedido,0,200000,"Aluguel em R$");
+  faixaOk(body.carencia_meses,0,24,"Carência em meses");
   if(erros.length){toast("Confira os valores:\n• "+erros.join("\n• "),"erro");return}
   try{
     await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);
@@ -555,6 +561,31 @@ async function atualizarRanking(){
 async function focar(id){
   const p=await api("api-viabilidade","/pontos/"+id);
   mapa.setView([p.lat,p.lng],17); abrirPonto(id);
+}
+
+// ---------- MODO DIAGNÓSTICO (só com ?debug=1 — invisível para o candidato) ----------
+if(new URLSearchParams(location.search).has("debug")){
+  const REG=[];
+  const reg=(tipo,msg)=>{REG.push({t:new Date().toISOString(),tipo,msg:String(msg).slice(0,300)});if(REG.length>200)REG.shift();};
+  window.addEventListener("error",e=>reg("erro",e.message+" @"+(e.filename||"").split("/").pop()+":"+e.lineno));
+  window.addEventListener("unhandledrejection",e=>reg("promise",e.reason));
+  const _f=window.fetch;
+  window.fetch=async(...a)=>{const t0=performance.now();try{const r=await _f(...a);const ms=Math.round(performance.now()-t0);if(!r.ok&&r.status!==401)reg("api",r.status+" "+String(a[0]).slice(0,120)+" ("+ms+"ms)");if(ms>10000)reg("lento",Math.round(ms/1000)+"s "+String(a[0]).slice(0,120));return r;}catch(err){reg("rede",err.message+" "+String(a[0]).slice(0,120));throw err;}};
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&document.getElementById("painel").classList.contains("aberto"))fecharPainel();
+    if(e.ctrlKey&&e.key==="k"){e.preventDefault();document.getElementById("qEnd")?.focus();}
+  });
+  const b=document.createElement("button");
+  b.textContent="🔧";b.title="Diagnóstico — exportar relatório";
+  b.style.cssText="position:fixed;bottom:20px;right:20px;z-index:5000;width:44px;height:44px;border-radius:50%;border:none;background:#374151;color:#fff;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+  b.onclick=()=>{
+    const NL=String.fromCharCode(10);
+    const md="# Diagnóstico — Viabilidade de Ponto"+NL+NL+"Gerado: "+new Date().toLocaleString("pt-BR")+NL+"Eventos: "+REG.length+NL+NL+(REG.map(r=>"- `"+r.t+"` **"+r.tipo+"** "+r.msg).join(NL)||"Nenhum evento registrado — sessão limpa.");
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));a.download="diagnostico-"+Date.now()+".md";a.click();
+    toast("Relatório de diagnóstico exportado ("+REG.length+" eventos)","ok",3000);
+  };
+  document.body.appendChild(b);
+  toast("Modo diagnóstico ativo — erros desta sessão serão registrados. Toque em 🔧 para exportar.","aviso",5000);
 }
 </script>
 </body>
