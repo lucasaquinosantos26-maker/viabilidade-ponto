@@ -342,7 +342,11 @@ async function orientarCidade(){
   let ter=null;
   try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
   let ancoras=[];
-  try{ ancoras=await buscarAncoras(g.lat,g.lng); }catch(e){console.warn("ancoras",e)}
+  for(let i=0;i<3&&!ancoras.length;i++){
+    try{ ancoras=await buscarAncoras(g.lat,g.lng); }
+    catch(e){ console.warn("ancoras tentativa "+(i+1),e); }
+    if(!ancoras.length&&i<2) await new Promise(r=>setTimeout(r,3000));
+  }
   desenharFoco(ancoras);
   const cbs=ancoras.filter(a=>a.tipo==="cb");
   if(cbs.length) mapa.fitBounds(L.latLngBounds(cbs.map(a=>[a.lat,a.lng])).pad(0.4));
