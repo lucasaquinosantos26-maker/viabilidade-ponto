@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viabilidade de Ponto — Ótica Center</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2E5EEA">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<style>
+:root{--azul:#2E5EEA;--amarelo:#FFC72C;--verde:#0E9F6E;--verm:#D64545;--cinza:#48515f;}
+*{box-sizing:border-box;margin:0;font-family:'Segoe UI',system-ui,sans-serif}
+body{height:100vh;overflow:hidden;background:#f4f6fb}
+#map{position:absolute;inset:0;z-index:1}
+.topbar{position:absolute;top:0;left:0;right:0;z-index:1000;background:var(--azul);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.topbar b{font-size:15px}
+.topbar .sair{margin-left:auto;background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+.busca{position:absolute;top:56px;left:12px;right:12px;z-index:1000;display:flex;gap:8px;max-width:520px}
+.busca input{flex:1;padding:11px 14px;border:none;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-size:14px}
+.busca button{background:var(--azul);color:#fff;border:none;border-radius:10px;padding:0 16px;cursor:pointer;font-weight:600}
+.calorbtn{background:#fff !important;color:#1c2430 !important;box-shadow:0 2px 10px rgba(0,0,0,.15);white-space:nowrap}
+.calorbtn.on{background:var(--amarelo) !important}
+#toasts{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:3000;display:flex;flex-direction:column;gap:8px;width:min(92vw,420px);pointer-events:none}
+.toast{background:#374151;color:#fff;padding:12px 14px;border-radius:10px;font-size:13.5px;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:pre-line;animation:tin .2s}
+.toast.ok{background:var(--verde)}
+.toast.erro{background:var(--verm)}
+.toast.aviso{background:#8a6d00}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.painel{position:absolute;top:0;right:-420px;width:400px;max-width:94vw;height:100%;background:#fff;z-index:1100;box-shadow:-4px 0 20px rgba(0,0,0,.18);transition:right .25s;display:flex;flex-direction:column}
+.painel.aberto{right:0}
+.painel header{background:var(--azul);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.painel header button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer}
+.painel .corpo{padding:16px;overflow-y:auto;flex:1}
+.card{border:1px solid #e3e8f2;border-radius:12px;padding:14px;margin-bottom:12px}
+.sem{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:-2px}
+.sem.verde{background:var(--verde)}.sem.amarelo{background:var(--amarelo)}.sem.vermelho{background:var(--verm)}
+.faixa{font-size:20px;font-weight:700;color:#1c2430}
+label{display:block;font-size:12px;color:var(--cinza);margin:10px 0 4px;font-weight:600}
+input[type=number],input[type=text],input[type=password]{width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px}
+.linha2{display:flex;gap:10px}.linha2>div{flex:1}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px}
+.btn.pri{background:var(--azul);color:#fff}
+.btn.amar{background:var(--amarelo);color:#1c2430}
+.btn.sec{background:#eef2fd;color:var(--azul)}
+.btn:disabled{opacity:.5;cursor:default}
+.ranking{position:absolute;bottom:0;left:0;right:0;z-index:1000;background:rgba(255,255,255,.97);border-top:2px solid var(--azul);padding:10px 12px;display:flex;gap:10px;overflow-x:auto}
+.chip{flex:0 0 auto;border:1.5px solid #d5dbe7;border-radius:12px;padding:8px 12px;cursor:pointer;background:#fff;min-width:170px}
+.chip .pos{font-weight:800;color:var(--azul)}
+.chip .end{font-size:12px;color:#1c2430;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.chip .st{font-size:11px;color:var(--cinza)}
+.chip.nr{border-color:var(--verm);opacity:.75}
+.aviso{background:#fff7e0;border:1px solid var(--amarelo);border-radius:8px;padding:9px 11px;font-size:12.5px;color:#6b5300;margin-top:10px}
+.timerbox{text-align:center;padding:8px 0}
+.timer{font-size:42px;font-weight:800;color:var(--azul);font-variant-numeric:tabular-nums}
+.contador{font-size:56px;font-weight:800;color:#1c2430;margin:6px 0}
+.tap{width:100%;padding:26px;border:none;border-radius:14px;background:var(--amarelo);font-size:20px;font-weight:800;cursor:pointer}
+.lista-f{font-size:12.5px;color:var(--cinza);margin-top:8px}
+#login{position:fixed;inset:0;z-index:2000;background:linear-gradient(135deg,var(--azul),#1a3ba8);display:flex;align-items:center;justify-content:center}
+#login .box{background:#fff;border-radius:16px;padding:28px;width:360px;max-width:92vw}
+#login h1{font-size:19px;color:#1c2430;margin-bottom:4px}
+#login p{font-size:13px;color:var(--cinza);margin-bottom:14px}
+.msg{font-size:12.5px;margin-top:10px;color:var(--verm)}
+.ok{color:var(--verde)}
+.dado-falt{display:inline-block;background:#eef2fd;color:var(--azul);border-radius:6px;padding:3px 8px;font-size:11.5px;margin:2px 3px 0 0}
+h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
+.risco{font-size:12.5px;color:var(--cinza);padding-left:14px;position:relative}
+.risco:before{content:"⚠";position:absolute;left:0;font-size:10px}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="box">
+    <h1 id="lTitulo">Entrar</h1>
+    <p>Ótica Center · acesso do candidato/franqueado</p>
+    <div id="vEntrar">
+      <label>E-mail</label><input type="text" id="lEmail" placeholder="voce@email.com" autocomplete="username" inputmode="email">
+      <label>Senha</label><input type="password" id="lSenha" placeholder="senha" autocomplete="current-password">
+      <button class="btn pri" id="bEntrar" onclick="ocupado('bEntrar','Entrando…',entrar)">Entrar</button>
+      <button class="btn sec" onclick="mostrarCadastro(true)">Ainda não tenho conta — criar cadastro</button>
+      <button class="btn sec" style="background:none" onclick="esqueciSenha()">Esqueci minha senha</button>
+    </div>
+    <div id="vCadastro" style="display:none">
+      <label>Nome completo</label><input type="text" id="cNome" placeholder="Seu nome" autocomplete="name">
+      <label>E-mail</label><input type="text" id="cEmail" placeholder="voce@email.com" autocomplete="email" inputmode="email">
+      <label>Senha (mínimo 6 caracteres)</label><input type="password" id="cSenha" placeholder="crie uma senha" autocomplete="new-password">
+      <button class="btn pri" id="bCadastrar" onclick="ocupado('bCadastrar','Criando…',cadastrar)">Criar minha conta</button>
+      <button class="btn sec" onclick="mostrarCadastro(false)">Já tenho conta — entrar</button>
+    </div>
+    <div class="msg" id="lMsg"></div>
+  </div>
+</div>
+
+<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="abrirOrientacao()">🧭 Onde procurar</button><button class="sair" style="margin-left:0" onclick="sair()">Sair</button></div>
+<div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button><button id="bCalor" class="calorbtn" onclick="toggleCalor()">🔥 Calor</button></div>
+<div id="map"></div>
+
+<div id="toasts"></div>
+<div id="boasvindas" style="display:none;position:fixed;inset:0;z-index:1900;background:rgba(15,23,42,.55);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:92vw">
+    <div id="bvPergunta">
+      <h1 style="font-size:18px;color:#1c2430">Bem-vindo! 👋</h1>
+      <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Você já tem um imóvel em vista para a sua loja?</p>
+      <button class="btn pri" onclick="fecharBoasVindas();toast('Busque o endereço ou toque no mapa para marcar o seu ponto.','ok',6000)">Sim — vou marcar no mapa</button>
+      <button class="btn amar" onclick="document.getElementById('bvPergunta').style.display='none';document.getElementById('bvCidade').style.display='block'">Ainda não — quero orientação de onde procurar</button>
+    </div>
+    <div id="bvCidade" style="display:none">
+      <h1 style="font-size:18px;color:#1c2430">Onde você quer abrir a loja?</h1>
+      <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Vamos verificar o perfil da cidade e marcar no mapa as ruas onde a busca deve se concentrar.</p>
+      <label>Cidade</label><input type="text" id="bvInput" placeholder="ex.: Sorocaba">
+      <label>Estado (UF)</label><input type="text" id="bvUf" placeholder="ex.: SP" maxlength="2">
+      <button class="btn pri" id="bOrientar" onclick="ocupado('bOrientar','Analisando a cidade…',orientarCidade)">Ver ruas de foco</button>
+      <button class="btn sec" onclick="fecharBoasVindas()">Deixar para depois</button>
+    </div>
+  </div>
+</div>
+<div class="painel" id="painel">
+  <header><b id="pTitulo">Ponto</b><button onclick="fecharPainel()">✕</button></header>
+  <div class="corpo" id="pCorpo"></div>
+</div>
+
+<div class="ranking" id="ranking"><span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto. Quanto mais opções, mais forte a comparação.</span></div>
+
+<script>
+const SUPA_URL="https://oytotqzwftuhentlhmae.supabase.co";
+const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95dG90cXp3ZnR1aGVudGxobWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Njg2NjksImV4cCI6MjA5NjI0NDY2OX0.gZl8g590sE6kdO7l8gTnifijYfxc6DbN8Uv5oQksaIs";
+let TOKEN=null, pontoAtivo=null, marcadores={}, mapa;
+
+// ---------- AUTH ----------
+async function authReq(path,body){
+  const r=await fetch(`${SUPA_URL}/auth/v1/${path}`,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON},body:JSON.stringify(body)});
+  return {ok:r.ok,data:await r.json()};
+}
+function mostrarCadastro(sim){
+  document.getElementById("vEntrar").style.display = sim ? "none" : "block";
+  document.getElementById("vCadastro").style.display = sim ? "block" : "none";
+  document.getElementById("lTitulo").textContent = sim ? "Criar cadastro" : "Entrar";
+  msg("");
+}
+function msg(t, ok){ const m=document.getElementById("lMsg"); m.className = "msg" + (ok ? " ok" : ""); m.textContent = t; }
+function traduzErro(d){
+  const t = (d.error_description || d.msg || d.message || "").toLowerCase();
+  if (t.includes("invalid login")) return "E-mail ou senha incorretos.";
+  if (t.includes("not confirmed")) return "E-mail ainda não confirmado — verifique sua caixa de entrada e o spam.";
+  if (t.includes("already registered")) return "Este e-mail já tem conta. Use \"Já tenho conta — entrar\".";
+  if (t.includes("at least 6")) return "A senha precisa ter pelo menos 6 caracteres.";
+  return d.error_description || d.msg || d.message || "Não foi possível concluir. Tente novamente.";
+}
+async function entrar(){
+  msg("Entrando…", true);
+  const {ok,data}=await authReq("token?grant_type=password",{email:v("lEmail"),password:v("lSenha")});
+  if(!ok){msg(traduzErro(data));return}
+  TOKEN=data.access_token; salvarSessao(data); iniciar(data.user?.email);
+}
+async function cadastrar(){
+  if(!v("cNome")){msg("Informe seu nome completo.");return}
+  msg("Criando sua conta…", true);
+  const {ok,data}=await authReq("signup",{email:v("cEmail"),password:v("cSenha"),data:{nome:v("cNome")}});
+  if(!ok){msg(traduzErro(data));return}
+  if(data.access_token){TOKEN=data.access_token;salvarSessao(data);iniciar(data.user?.email);}
+  else{
+    mostrarCadastro(false);
+    document.getElementById("lEmail").value=v("cEmail");
+    msg("Conta criada! Enviamos um link de confirmação para "+v("cEmail")+". Confirme (veja o spam) e depois entre aqui com sua senha.", true);
+  }
+}
+function sair(){TOKEN=null;try{localStorage.removeItem("oc_sessao")}catch(e){};location.reload()}
+function v(id){return document.getElementById(id).value.trim()}
+
+// ---------- SESSÃO / UTIL ----------
+function toast(txt,tipo,ms){
+  const c=document.getElementById("toasts"); if(!c)return;
+  const el=document.createElement("div"); el.className="toast "+(tipo||"erro"); el.textContent=txt;
+  c.appendChild(el); setTimeout(()=>el.remove(),ms||5000);
+}
+// alerts nativos viram toasts (não congelam a tela); confirm() continua nativo para decisões
+window.alert=(t)=>toast(String(t),"aviso");
+async function ocupado(id,rotulo,fn){
+  const b=document.getElementById(id); if(!b||b.disabled)return;
+  const t=b.innerHTML; b.disabled=true; b.innerHTML=rotulo;
+  try{await fn()}finally{b.disabled=false;b.innerHTML=t}
+}
+function salvarSessao(d){try{localStorage.setItem("oc_sessao",JSON.stringify({rt:d.refresh_token,email:d.user?.email}))}catch(e){}}
+function lerSessao(){try{return JSON.parse(localStorage.getItem("oc_sessao"))}catch(e){return null}}
+async function refreshToken(){
+  const s=lerSessao(); if(!s?.rt)return false;
+  const {ok,data}=await authReq("token?grant_type=refresh_token",{refresh_token:s.rt});
+  if(!ok){try{localStorage.removeItem("oc_sessao")}catch(e){};return false}
+  TOKEN=data.access_token; salvarSessao(data); return true;
+}
+async function restaurarSessao(){
+  if(await refreshToken()){iniciar(lerSessao()?.email);return true}
+  return false;
+}
+async function esqueciSenha(){
+  const email=v("lEmail")||prompt("Qual o seu e-mail de cadastro?");
+  if(!email)return;
+  msg("Enviando…", true);
+  const {ok,data}=await authReq("recover?redirect_to="+encodeURIComponent(location.origin+location.pathname),{email});
+  msg(ok?"Enviamos um link de redefinição para "+email+" (veja o spam). Abra o link e crie a nova senha.":traduzErro(data), ok);
+}
+async function tratarLinkRecuperacao(){
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(h.get("type")!=="recovery"||!h.get("access_token"))return false;
+  const tk=h.get("access_token");
+  history.replaceState(null,"",location.pathname);
+  const nova=prompt("Crie sua nova senha (mínimo 6 caracteres):");
+  if(nova){
+    const r=await fetch(`${SUPA_URL}/auth/v1/user`,{method:"PUT",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+tk},body:JSON.stringify({password:nova})});
+    if(r.ok){msg("Senha alterada! Entre com a nova senha.", true);}
+    else{msg("Não foi possível alterar a senha. Peça um novo link em \"Esqueci minha senha\".");}
+  }
+  return true;
+}
+window.addEventListener("load",async()=>{ if(await tratarLinkRecuperacao())return; restaurarSessao(); });
+if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+// ---------- API ----------
+async function api(fn,path,method="GET",body=null,retry){
+  const r=await fetch(`${SUPA_URL}/functions/v1/${fn}${path}`,{method,headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+TOKEN},body:body?JSON.stringify(body):null});
+  if(r.status===401&&!retry&&await refreshToken()) return api(fn,path,method,body,true);
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d?.error?.message||("Erro "+r.status));
+  return d;
+}
+
+// ---------- MAPA ----------
+function iniciar(email){
+  document.getElementById("login").style.display="none";
+  document.getElementById("quem").textContent=email||"";
+  mapa=L.map("map",{zoomControl:false}).setView([-22.9056,-47.0608],14);
+  L.control.zoom({position:"bottomright"}).addTo(mapa);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:19}).addTo(mapa);
+  mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
+  mapa.on("moveend",()=>{ if(!calorOn)return; clearTimeout(calorTimer); calorTimer=setTimeout(atualizarCalor,700); });
+  carregarCorredores(); carregarPontos(); atualizarRanking();
+  // botão do backoffice — só para o time de expansão (papel interno)
+  api("api-viabilidade","/perfil").then(pf=>{
+    if(pf?.papel==="interno"&&!document.getElementById("bExp")){
+      const b=document.createElement("button");
+      b.id="bExp"; b.className="sair"; b.style.marginLeft="0"; b.textContent="🗂 Expansão";
+      b.onclick=abrirExpansao;
+      const primeiro=document.querySelector(".topbar .sair");
+      document.querySelector(".topbar").insertBefore(b,primeiro);
+    }
+  }).catch(()=>{});
+}
+
+// ---------- PAINEL DA EXPANSÃO (papel interno — dados que o candidato nunca vê) ----------
+async function abrirExpansao(){
+  document.getElementById("pTitulo").textContent="🗂 Painel da Expansão";
+  document.getElementById("pCorpo").innerHTML='<div style="font-size:13px;color:var(--cinza)">Carregando dados internos…</div>';
+  document.getElementById("painel").classList.add("aberto");
+  try{
+    const [hs,ps]=await Promise.all([api("api-viabilidade","/admin/handoffs"),api("api-viabilidade","/admin/pontos")]);
+    const stOpts=["novo","em_analise","visitado","aprovado","reprovado"];
+    const stLabel=s=>({novo:"🆕 Novo",em_analise:"🔎 Em análise",visitado:"📍 Visitado",aprovado:"✅ Aprovado",reprovado:"❌ Reprovado"}[s]||s);
+    const fmtProj=p=>p?("R$ "+Math.round(p.min/1000)+"–"+Math.round(p.max/1000)+" mil/mês"):"—";
+    document.getElementById("pCorpo").innerHTML=`
+      <div class="card">
+        <h4 style="margin-top:0">📨 Fila de handoffs (${hs.length})</h4>
+        ${hs.length?hs.map(h=>`
+          <div style="border:1px solid #e3e8f2;border-radius:10px;padding:10px;margin-bottom:8px">
+            <b style="font-size:13px">${(h.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
+            <div style="font-size:11.5px;color:var(--cinza)">${h.cidade||""}${h.uf?"/"+h.uf:""} · ${h.bandeira||"bandeira?"} · ${h.candidato||""} · ${new Date(h.criado_em).toLocaleDateString("pt-BR")}</div>
+            <select id="st_${h.id}" style="width:100%;margin-top:6px;padding:8px;border:1px solid #d5dbe7;border-radius:8px;background:#fff">${stOpts.map(s=>`<option value="${s}" ${h.status===s?"selected":""}>${stLabel(s)}</option>`).join("")}</select>
+            <input type="text" id="pa_${h.id}" placeholder="parecer interno…" value="${(h.parecer||"").replace(/"/g,"&quot;")}" style="margin-top:6px">
+            <button class="btn sec" id="bh_${h.id}" onclick="ocupado('bh_${h.id}','Salvando…',()=>salvarHandoff('${h.id}'))">Salvar</button>
+          </div>`).join(""):'<div style="font-size:12.5px;color:var(--cinza)">Nenhum handoff na fila.</div>'}
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0">📊 Pontos da rede (${ps.length}) — visão interna</h4>
+        ${ps.map(p=>`
+          <div style="border-bottom:1px solid #eef2fd;padding:8px 0;font-size:12.5px">
+            <span class="sem ${p.semaforo||"amarelo"}"></span><b>${(p.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
+            <div style="color:var(--cinza)">${p.cidade||""} · ${p.bandeira||"—"} · ${p.candidato||""}${p.status==="handoff"?" · <b>EM NEGOCIAÇÃO</b>":""}</div>
+            <div>Score: <b>${p.score??"—"}</b>/100 · Projeção: <b>${fmtProj(p.projecao)}</b> · Fluxo: ${p.fluxo_media??"—"}/2min · ${(p.recomendacao||"").replaceAll("_"," ")}</div>
+          </div>`).join("")||'<div style="font-size:12.5px;color:var(--cinza)">Nenhum ponto cadastrado.</div>'}
+      </div>
+      <div style="font-size:11px;color:var(--verm);text-align:center;margin-top:6px">🔒 Dados internos da Diretoria de Expansão — nunca compartilhe score ou projeção com o candidato.</div>`;
+  }catch(e){document.getElementById("pCorpo").innerHTML='<div class="aviso">'+e.message+'</div>'}
+}
+async function salvarHandoff(id){
+  try{
+    await api("api-viabilidade","/admin/handoffs/"+id,"PATCH",{status:document.getElementById("st_"+id).value,parecer:v("pa_"+id)});
+    toast("✓ Handoff atualizado","ok",2500);
+  }catch(e){toast(e.message,"erro")}
+}
+
+// ---------- MAPA DE CALOR (dados reais: comércio OSM + fluxo da rede) ----------
+let heatLayer=null,calorOn=false,calorTimer=null,heatFluxo=[],overpassCache={};
+async function carregarCalorFluxo(){
+  try{const pts=await api("api-viabilidade","/calor");
+    heatFluxo=pts.map(p=>[p.lat,p.lng,Math.min(Math.max(p.peso??1,5),60)/60]);
+  }catch(e){heatFluxo=[]}
+}
+async function carregarPOIs(){
+  if(mapa.getZoom()<13) return [];
+  const b=mapa.getBounds();
+  const bbox=`${b.getSouth().toFixed(3)},${b.getWest().toFixed(3)},${b.getNorth().toFixed(3)},${b.getEast().toFixed(3)}`;
+  if(overpassCache[bbox]) return overpassCache[bbox];
+  const q=`[out:json][timeout:20];(node["shop"](${bbox});node["amenity"~"^(bank|pharmacy|restaurant|cafe|fast_food|marketplace|clinic|dentist|optician)$"](${bbox}););out skel qt 4000;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+  if(!r.ok) throw new Error("Overpass "+r.status);
+  const d=await r.json();
+  const pts=(d.elements||[]).filter(e=>e.lat&&e.lon).map(e=>[e.lat,e.lon,0.35]);
+  overpassCache[bbox]=pts;
+  return pts;
+}
+async function atualizarCalor(){
+  if(!calorOn) return;
+  try{
+    const pois=await carregarPOIs();
+    const pts=[...pois,...heatFluxo.map(p=>[p[0],p[1],Math.max(p[2],0.7)])];
+    if(heatLayer) mapa.removeLayer(heatLayer);
+    if(pts.length) heatLayer=L.heatLayer(pts,{radius:22,blur:18,maxZoom:17}).addTo(mapa);
+  }catch(e){console.warn("calor",e)}
+}
+async function toggleCalor(){
+  const b=document.getElementById("bCalor");
+  calorOn=!calorOn;
+  b.classList.toggle("on",calorOn);
+  if(calorOn){
+    b.textContent="🔥 Carregando…"; b.disabled=true;
+    if(mapa.getZoom()<13){alert("Aproxime o mapa (zoom) para ver o calor comercial da região.");}
+    await carregarCalorFluxo();
+    await atualizarCalor();
+    b.disabled=false; b.textContent="🔥 Calor ligado";
+  }else{
+    if(heatLayer){mapa.removeLayer(heatLayer);heatLayer=null;}
+    b.textContent="🔥 Calor";
+  }
+}
+async function carregarCorredores(){
+  try{
+    const cs=await api("api-viabilidade","/corredores");
+    cs.forEach(c=>{
+      const cor=c.prioridade===1?"#2E5EEA":c.prioridade===2?"#7c9af5":"#b8c6f0";
+      L.geoJSON(c.geojson,{style:{color:cor,weight:7,opacity:.75}}).bindTooltip(`Corredor recomendado: ${c.nome} (${c.cidade})`).addTo(mapa);
+    });
+  }catch(e){console.warn("corredores",e)}
+}
+async function carregarPontos(){
+  try{
+    const ps=await api("api-viabilidade","/pontos");
+    ps.forEach(p=>plotar(p));
+    if(!ps.length){
+      document.getElementById("bvPergunta").style.display="block";
+      document.getElementById("bvCidade").style.display="none";
+      document.getElementById("boasvindas").style.display="flex";
+    }
+  }catch(e){console.warn(e)}
+}
+
+// ---------- ORIENTAÇÃO TERRITORIAL (Etapa 1 — onde procurar) ----------
+let camadaFoco=[];
+function abrirOrientacao(){
+  document.getElementById("bvPergunta").style.display="none";
+  document.getElementById("bvCidade").style.display="block";
+  document.getElementById("boasvindas").style.display="flex";
+}
+function fecharBoasVindas(){document.getElementById("boasvindas").style.display="none";}
+function distM(a,b){
+  const R=6371000,rad=Math.PI/180;
+  const dLat=(b.lat-a.lat)*rad,dLng=(b.lng-a.lng)*rad;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+// Mede circulação A PÉ real: densidade de lojas de rua por logradouro + calçadões + âncoras da rede.
+const RE_ANCORA=/casas? bahia|pernambucanas|riachuelo|magazine luiza|magalu|lojas marisa|renner|lojas americanas|caedu|torra/i;
+async function buscarComercio(lat,lng){
+  const d=0.045;
+  const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
+  const q=`[out:json][timeout:30];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 2500;(way["highway"="pedestrian"]["name"](${bbox});way["highway"="living_street"]["name"](${bbox});way["shop"="mall"](${bbox});way["building"="mall"](${bbox}););out geom qt 500;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+  if(!r.ok) throw new Error("Overpass "+r.status);
+  const dj=await r.json();
+  const els=(dj.elements||[]);
+  // shoppings de verdade (mall) — a loja da rede é de RUA
+  const malls=els.filter(e=>e.tags?.shop==="mall"||e.tags?.building==="mall").map(e=>({lat:e.lat??e.center?.lat,lng:e.lon??e.center?.lng??e.center?.lon})).filter(m=>m.lat&&m.lng);
+  // contorno real dos prédios de shopping (fecha a brecha de malls gigantes)
+  const M=0.0004; // ~40 m de margem
+  const mallBounds=els.filter(e=>e.geometry&&(e.tags?.shop==="mall"||e.tags?.building==="mall")).map(e=>{
+    const b={minLat:90,maxLat:-90,minLng:180,maxLng:-180};
+    e.geometry.forEach(g=>{b.minLat=Math.min(b.minLat,g.lat);b.maxLat=Math.max(b.maxLat,g.lat);b.minLng=Math.min(b.minLng,g.lon);b.maxLng=Math.max(b.maxLng,g.lon);});
+    return b;
+  });
+  const dentroDeMall=l=>mallBounds.some(b=>l.lat>=b.minLat-M&&l.lat<=b.maxLat+M&&l.lng>=b.minLng-M&&l.lng<=b.maxLng+M);
+  // calçadões e ruas de pedestre (com geometria, para "adotar" lojas sem endereço)
+  const pedWays=els.filter(e=>e.geometry&&(e.tags?.highway==="pedestrian"||e.tags?.highway==="living_street")&&e.tags?.name)
+    .map(e=>({nome:e.tags.name,pts:e.geometry.map(g=>({lat:g.lat,lng:g.lon}))}));
+  const calcadoes=new Set(pedWays.map(w=>w.nome));
+  // lojas de rua (qualquer comércio), fora de shopping
+  const lojas=els.filter(e=>e.tags?.shop&&e.tags.shop!=="mall").map(e=>({
+    lat:e.lat??e.center?.lat, lng:e.lon??e.center?.lon, nome:e.tags.name||"", rua:e.tags["addr:street"]||null
+  })).filter(l=>l.lat&&l.lng&&!malls.some(m=>distM(l,m)<=90)&&!dentroDeMall(l));
+  // loja sem endereço? adota o calçadão mais próximo (até 60 m) — é onde ela está de fato
+  lojas.forEach(l=>{
+    if(l.rua) return;
+    for(const w of pedWays){
+      if(w.pts.some(p=>distM(l,p)<=60)){ l.rua=w.nome; break; }
+    }
+  });
+  // agrega por rua — o sinal de "gente a pé" é a DENSIDADE LINEAR (lojas por km),
+  // que separa calçadão (dezenas de lojas em 400 m) de avenida de carro (lojas espalhadas por km)
+  const porRua={};
+  lojas.forEach(l=>{
+    if(!l.rua) return;
+    const r=porRua[l.rua] ?? (porRua[l.rua]={rua:l.rua,n:0,anc:0,sLat:0,sLng:0,minLat:l.lat,maxLat:l.lat,minLng:l.lng,maxLng:l.lng});
+    r.n++; r.sLat+=l.lat; r.sLng+=l.lng;
+    r.minLat=Math.min(r.minLat,l.lat); r.maxLat=Math.max(r.maxLat,l.lat);
+    r.minLng=Math.min(r.minLng,l.lng); r.maxLng=Math.max(r.maxLng,l.lng);
+    if(RE_ANCORA.test(l.nome)) r.anc++;
+  });
+  return Object.values(porRua)
+    .map(r=>{
+      const extKm=Math.max(distM({lat:r.minLat,lng:r.minLng},{lat:r.maxLat,lng:r.maxLng})/1000, 0.25);
+      const densidade=r.n/extKm; // lojas por km — proxy direto de circulação a pé
+      const cal=calcadoes.has(r.rua);
+      return {rua:r.rua,nLojas:r.n,nAncoras:r.anc,lat:r.sLat/r.n,lng:r.sLng/r.n,calcadao:cal,densidade:Math.round(densidade),
+        forca:densidade*(cal?1.6:1) + r.anc*8};
+    })
+    .filter(r=>r.nLojas>=5)
+    .sort((a,b)=>b.forca-a.forca)
+    .slice(0,8);
+}
+function desenharFoco(ruas){
+  camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
+  const max=ruas[0]?.forca||1;
+  ruas.forEach((r,i)=>{
+    const op=0.12+0.38*(r.forca/max);
+    const ci=L.circle([r.lat,r.lng],{radius:280,color:"#D64545",weight:i===0?3:2,fillColor:"#D64545",fillOpacity:op})
+      .bindTooltip("🎯 "+r.rua+" — corredor prioritário para procurar imóvel").addTo(mapa);
+    camadaFoco.push(ci);
+  });
+  return ruas;
+}
+async function orientarCidade(){
+  const cid=v("bvInput"); const uf=v("bvUf").toUpperCase();
+  if(!cid){toast("Digite a cidade.","erro");return}
+  const g=await geocodificar(cid+(uf?", "+uf:"")+", Brasil");
+  if(!g){toast("Cidade não encontrada no mapa. Confira a grafia.","erro");return}
+  fecharBoasVindas();
+  mapa.setView([g.lat,g.lng],14);
+  let ter=null;
+  try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
+  let ruas=[];
+  for(let i=0;i<3&&!ruas.length;i++){
+    try{ ruas=await buscarComercio(g.lat,g.lng); }
+    catch(e){ console.warn("comercio tentativa "+(i+1),e); }
+    if(!ruas.length&&i<2) await new Promise(r=>setTimeout(r,3000));
+  }
+  desenharFoco(ruas);
+  if(ruas.length) mapa.fitBounds(L.latLngBounds(ruas.map(a=>[a.lat,a.lng])).pad(0.3),{maxZoom:15});
+  document.getElementById("pTitulo").textContent="🧭 Onde procurar em "+(ter?.cidade||cid);
+  document.getElementById("pCorpo").innerHTML=`
+    <div class="card" style="border-color:${ter?.status==="aberta"?"var(--verde)":"var(--amarelo)"}">
+      <b>${ter?.status==="aberta"?"✅ Cidade dentro do perfil da rede":ter?.status==="em_espera"?"⚠️ Converse com o time de expansão antes":"ℹ️ Cidade a validar com a expansão"}</b>
+      <div style="font-size:13px;color:#1c2430;margin-top:6px">${ter?.mensagem||"Siga os corredores marcados no mapa."}</div>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">📍 Principais ruas para procurar</h4>
+      ${ruas.length?ruas.slice(0,6).map((r,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef2fd;font-size:13.5px"><b style="color:var(--verm)">#${i+1}</b><span style="flex:1"><b>${r.rua}</b>${r.calcadao?' <span style="font-size:10.5px;background:#fdeaea;color:var(--verm);border-radius:5px;padding:1px 6px;font-weight:700">CALÇADÃO</span>':""}</span><span style="font-size:11px;color:var(--cinza);font-weight:600">${r.densidade} lojas/km</span></div>`).join(""):'<div class="aviso">Não conseguimos medir a circulação nesta área do mapa. Comece pelo calçadão/centro de comércio popular da cidade — e reabra o 🧭 se quiser tentar outra região.</div>'}
+      <div style="font-size:12.5px;color:var(--cinza);margin-top:10px">Ranking medido pela <b>circulação de pessoas a pé</b>: concentração real de comércio de rua e calçadões (shoppings e lojas dentro de shopping são descartados). Os <b>círculos vermelhos</b> no mapa marcam essas ruas — quanto <b>mais forte o vermelho</b>, mais gente passa a pé. Procure imóveis <b>dentro do círculo</b>.</div>
+      <h4>O que procurar no imóvel</h4>
+      <div class="risco">Rua ou calçadão de comércio popular, com gente a pé</div>
+      <div class="risco">Fachada de 4 m ou mais, sem recuo da calçada</div>
+      <div class="risco">Salão a partir de ~40 m²</div>
+      <div class="risco">Proprietário aberto a contrato de 5 anos</div>
+      <button class="btn pri" onclick="fecharPainel();toast('Achou um imóvel? Toque nele no mapa para registrar e analisar.','ok',6000)">Entendi — explorar o mapa</button>
+    </div>`;
+  document.getElementById("painel").classList.add("aberto");
+}
+function plotar(p){
+  if(marcadores[p.id]) mapa.removeLayer(marcadores[p.id]);
+  const m=L.marker([p.lat,p.lng]).addTo(mapa).on("click",()=>abrirPonto(p.id));
+  marcadores[p.id]=m;
+}
+// Chave opcional do Google (Geocoding API). Preencha para busca mais precisa;
+// vazio = usa OpenStreetMap. Restrinja a chave por referrer no console do Google.
+const GOOGLE_KEY = "";
+
+// Extrai coordenadas de links do Google Maps ou de "lat, lng" colado direto
+function coordsDeTexto(q){
+  // 1) .../@-22.905,-47.060,17z  (link de navegador)
+  let m = q.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 2) ...!3d-22.905!4d-47.060  (link de lugar/compartilhar)
+  m = q.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 3) ?q=-22.905,-47.060 ou ?query=...
+  m = q.match(/[?&](?:q|query|ll|center)=(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  // 4) coordenadas puras coladas: "-22.905, -47.060"
+  m = q.trim().match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+  if (m) return {lat:+m[1], lng:+m[2]};
+  return null;
+}
+
+async function geocodificar(q){
+  if (GOOGLE_KEY){
+    const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&region=br&language=pt-BR&key=${GOOGLE_KEY}`);
+    const d = await r.json();
+    if (d.status === "OK" && d.results.length){
+      const g = d.results[0];
+      return {lat: g.geometry.location.lat, lng: g.geometry.location.lng, nome: g.formatted_address};
+    }
+    return null;
+  }
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(q)}`,{headers:{"Accept-Language":"pt-BR"}});
+  const d = await r.json();
+  return d.length ? {lat:+d[0].lat, lng:+d[0].lon, nome:d[0].display_name} : null;
+}
+
+async function buscarEndereco(){
+  const q = v("qEnd"); if(!q) return;
+
+  // Link encurtado do Maps: impossível expandir pelo navegador — pedir endereço escrito
+  if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(q)){
+    alert("Esse é um link encurtado do Maps e não dá para ler as coordenadas dele.\n\nAbra o link no Maps e me traga o endereço por escrito (Rua, Número, Bairro, Cidade) — ou copie o link completo da barra de endereço, que contém a localização.");
+    return;
+  }
+
+  // Link completo do Maps ou coordenadas coladas: vai direto, sem geocodificar
+  const c = coordsDeTexto(q);
+  if (c){
+    mapa.setView([c.lat, c.lng], 18);
+    novoPonto(c.lat, c.lng, null); // reverse geocode preenche o endereço
+    return;
+  }
+
+  // Endereço escrito
+  try{
+    const g = await geocodificar(q);
+    if (!g){ alert("Endereço não encontrado. Tente o formato: Rua, Número, Bairro, Cidade — ou cole o link completo do Google Maps."); return; }
+    mapa.setView([g.lat, g.lng], 17);
+    novoPonto(g.lat, g.lng, g.nome);
+  }catch(e){
+    alert("A busca falhou agora. Verifique a conexão e tente de novo — ou toque direto no mapa para soltar o pin.");
+  }
+}
+let criandoPonto=false;
+async function novoPonto(lat,lng,endTexto){
+  if(contando){alert("Termine ou cancele a contagem antes de marcar outro ponto.");return}
+  if(criandoPonto)return; criandoPonto=true;
+  let endereco=endTexto,cidade=null,uf=null;
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
+    const d=await r.json();
+    endereco=endereco||d.display_name; cidade=d.address?.city||d.address?.town||d.address?.municipality||null; uf=d.address?.state_code||null;
+  }catch(e){}
+  try{
+    const p=await api("api-viabilidade","/pontos","POST",{lat,lng,endereco,cidade,uf});
+    plotar(p); abrirPonto(p.id); atualizarRanking();
+  }catch(e){alert(e.message)}
+  criandoPonto=false;
+}
+
+// ---------- PAINEL DO PONTO ----------
+async function abrirPonto(id){
+  pontoAtivo=id;
+  const p=await api("api-viabilidade","/pontos/"+id);
+  window.__pontoAtual=p; fotosCache=[]; fluxoOkCache=false;
+  document.getElementById("pTitulo").textContent=(p.endereco||"Ponto").split(",").slice(0,2).join(",");
+  const a=p.ultima_analise?.resultado_sanitizado;
+  document.getElementById("pCorpo").innerHTML=`
+    ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
+    <div class="card">
+      <h4 style="margin-top:0">Dados do imóvel</h4>
+      <div class="linha2">
+        <div><label>Fachada (m)</label><input type="number" id="fFach" step="0.1" value="${p.fachada_largura_m??""}"></div>
+        <div><label>Salão (m²)</label><input type="number" id="fSalao" value="${p.salao_m2??""}"></div>
+      </div>
+      <div class="linha2">
+        <div><label>Sobreloja (m²)</label><input type="number" id="fSobre" value="${p.sobreloja_m2??""}"></div>
+        <div><label>Aluguel pedido (R$)</label><input type="number" id="fAlug" value="${p.aluguel_pedido??""}"></div>
+      </div>
+      <div class="linha2">
+        <div><label>Bandeira pretendida</label><select id="fBand" style="width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px;background:#fff"><option value="">— selecionar —</option>${["Center","Rubi","Mil","XT","Extra","Vale","Big","Bela","Mais Óptica","Multi"].map(b=>`<option ${p.bandeira===b?"selected":""}>${b}</option>`).join("")}</select></div>
+        <div><label>Carência (meses)</label><input type="number" id="fCar" min="0" max="24" value="${p.carencia_meses??""}"></div>
+      </div>
+      <div class="chk"><input type="checkbox" id="f5anos" ${p.contrato_5anos?"checked":""}><span>Proprietário aceita contrato mínimo de <b>5 anos</b></span></div>
+      <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
+      <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
+      <label>Lojas âncora por perto (ex.: Casas Bahia, Pernambucanas — ou escreva "nenhuma")</label>
+      <input type="text" id="fAncoras" value="${(p.enriquecimento?.ancoras||[]).join(", ")}">
+      <div class="chk"><input type="checkbox" id="fConc" ${p.enriquecimento?.concorrente_lider_antes?"checked":""}><span>Tem ótica concorrente forte <b>antes</b> do ponto, no mesmo trajeto</span></div>
+      <button class="btn sec" id="bSalvar" onclick="ocupado('bSalvar','Salvando…',salvarDados)">Salvar dados</button>
+      <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
+      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">📷 Fotos do imóvel</h4>
+      <div style="font-size:12px;color:var(--cinza)">Fachada, interior, vitrine e entorno — fazem parte da análise final.</div>
+      <div id="fotosGrid" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+      <input type="file" id="fFoto" accept="image/*" capture="environment" style="display:none" onchange="enviarFoto(this)">
+      <button class="btn sec" id="bFoto" onclick="document.getElementById('fFoto').click()">📷 Adicionar foto</button>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
+      <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
+      <div style="background:#eef2fd;border-radius:10px;padding:10px 12px;margin-top:10px">
+        <b style="font-size:13px">Já fez a contagem?</b>
+        <div style="font-size:12px;color:var(--cinza)">Registre direto, sem usar o cronômetro:</div>
+        <label>Pessoas que passaram em 2 minutos</label>
+        <input type="number" id="fManual" min="0" placeholder="ex.: 34">
+        <div class="chk"><input type="checkbox" id="fJanela"><span>A contagem foi feita <b>entre 12h e 14h</b>, em frente ao imóvel</span></div>
+        <button class="btn sec" id="bRegManual" onclick="ocupado('bRegManual','Registrando…',registrarManual)">Registrar contagem</button>
+      </div>
+      <div style="font-size:12px;color:var(--cinza);text-align:center;margin-top:10px">— ou conte agora —</div>
+      <div class="timerbox">
+        <div class="timer" id="tmr">2:00</div>
+        <div class="contador" id="cnt" style="display:none">0</div>
+        <button class="tap" id="btnTap" onclick="tapOuIniciar()">Iniciar contagem</button>
+        <div id="ctlContagem" style="display:none;gap:8px;margin-top:8px">
+          <button class="btn sec" style="margin-top:0" id="btnPause" onclick="pausarContagem()">&#9208; Pausar</button>
+          <button class="btn" style="margin-top:0;background:#fdeaea;color:var(--verm)" onclick="cancelarContagem()">&#10005; Cancelar</button>
+        </div>
+      </div>
+      <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
+    </div>
+    <button class="btn amar" id="bHandoff" onclick="ocupado('bHandoff','Enviando…',handoff)">✓ Seguir para negociação</button>
+    <button class="btn" style="background:none;color:var(--verm)" id="bDescartar" onclick="ocupado('bDescartar','Descartando…',descartarPonto)">Descartar este ponto</button>
+    <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
+  document.getElementById("painel").classList.add("aberto");
+  resumoFluxo(); listarFotos(); atualizarChecklist();
+}
+
+// ---------- FOTOS + CHECKLIST (Etapa 2) ----------
+let fotosCache=[], fluxoOkCache=false;
+async function listarFotos(){
+  try{
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/list/fotos-pontos`,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+TOKEN},body:JSON.stringify({prefix:pontoAtivo+"/",limit:24,sortBy:{column:"created_at",order:"desc"}})});
+    const d=await r.json().catch(()=>[]);
+    fotosCache=Array.isArray(d)?d.filter(f=>f.name&&f.id):[];
+  }catch(e){fotosCache=[]}
+  const g=document.getElementById("fotosGrid"); if(!g)return;
+  g.innerHTML=fotosCache.map(f=>`<a href="${SUPA_URL}/storage/v1/object/public/fotos-pontos/${pontoAtivo}/${encodeURIComponent(f.name)}" target="_blank"><img src="${SUPA_URL}/storage/v1/object/public/fotos-pontos/${pontoAtivo}/${encodeURIComponent(f.name)}" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid #e3e8f2"></a>`).join("")||'<span style="font-size:12px;color:var(--cinza)">Nenhuma foto ainda.</span>';
+  atualizarChecklist();
+}
+async function enviarFoto(inp){
+  const file=inp.files[0]; if(!file)return;
+  if(file.size>8*1024*1024){toast("Foto muito grande (máximo 8 MB).","erro");inp.value="";return}
+  const b=document.getElementById("bFoto"); b.disabled=true; b.textContent="Enviando…";
+  try{
+    const nome=Date.now()+"."+((file.name.split(".").pop()||"jpg").toLowerCase());
+    const r=await fetch(`${SUPA_URL}/storage/v1/object/fotos-pontos/${pontoAtivo}/${nome}`,{method:"POST",headers:{"apikey":ANON,"Authorization":"Bearer "+TOKEN,"Content-Type":file.type||"image/jpeg"},body:file});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||("Erro "+r.status))}
+    toast("✓ Foto enviada","ok",2500);
+    listarFotos();
+  }catch(e){toast(e.message,"erro")}
+  b.disabled=false; b.textContent="📷 Adicionar foto"; inp.value="";
+}
+function atualizarChecklist(){
+  const p=window.__pontoAtual||{}; const el=document.getElementById("ckList"); if(!el)return;
+  const it=(ok,txt)=>`<div style="padding:3px 0">${ok?"✅":"⬜"} ${txt}</div>`;
+  el.innerHTML=
+    it(fluxoOkCache,"Contagem de fluxo (mínimo 1 leitura válida)")+
+    it(p.aluguel_pedido!=null,"Valor do aluguel pedido")+
+    it(p.carencia_meses!=null,"Carência informada")+
+    it(p.contrato_5anos===true,"Contrato de 5 anos confirmado pelo proprietário")+
+    it(fotosCache.length>0,"Fotos do imóvel"+(fotosCache.length?" ("+fotosCache.length+")":""))+
+    it(!!p.bandeira,"Bandeira pretendida");
+}
+function cardAnalise(a){
+  const nomeRec={recomendado:"Recomendado",requer_atencao:"Requer atenção",nao_recomendado:"Não recomendado"}[a.recomendacao]||a.recomendacao;
+  const mod={fluxo:"Loja de Fluxo",campanha:"Loja de Campanha",nenhum:"—"}[a.modelo_recomendado];
+  return `<div class="card">
+    <div><span class="sem ${a.semaforo}"></span><b style="font-size:16px">${nomeRec}</b> <span style="font-size:12px;color:var(--cinza)">· ${mod}${a.preliminar?" · preliminar":""}</span></div>
+    <div style="font-size:13px;color:#1c2430;margin:8px 0">${a.motivo_principal}</div>
+    ${a.reforma_estimada?`<div style="font-size:12.5px;color:var(--cinza);margin-top:6px">Reforma estimada: R$ ${fmt(a.reforma_estimada.min)} – ${fmt(a.reforma_estimada.max)}</div>`:""}
+    ${a.fluxo?.media!=null?`<div style="font-size:12.5px;margin-top:6px">Fluxo médio: <b>${a.fluxo.media}</b> pessoas/2min (${a.fluxo.leituras_validas} leitura(s), ${a.fluxo.dias_distintos} dia(s))</div>`:""}
+    ${a.dados_faltantes?.length?`<h4>Complete para refinar</h4>${a.dados_faltantes.map(d=>`<span class="dado-falt">${d.replaceAll("_"," ")}</span>`).join("")}`:""}
+    ${a.riscos?.length?`<h4>Riscos a verificar</h4>${a.riscos.map(r=>`<div class="risco">${r}</div>`).join("")}`:""}
+  </div>`;
+}
+function fmt(n){return Number(n).toLocaleString("pt-BR")}
+function fecharPainel(){
+  if(contando&&!confirm("Há uma contagem em andamento. Fechar o painel descarta a contagem. Fechar mesmo assim?"))return;
+  if(contando){clearInterval(tick);contando=false;pausado=false;resetContagemUI();}
+  document.getElementById("painel").classList.remove("aberto");
+}
+
+async function salvarDados(){
+  const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked,bandeira:v("fBand")||null,carencia_meses:num("fCar"),contrato_5anos:document.getElementById("f5anos").checked};
+  const erros=[];
+  const faixaOk=(x,min,max,nome)=>{if(x!=null&&(x<min||x>max))erros.push(nome+" (entre "+min+" e "+max+")")};
+  faixaOk(body.fachada_largura_m,0.5,30,"Fachada em metros");
+  faixaOk(body.salao_m2,5,2000,"Salão em m²");
+  faixaOk(body.sobreloja_m2,0,1000,"Sobreloja em m²");
+  faixaOk(body.aluguel_pedido,0,200000,"Aluguel em R$");
+  faixaOk(body.carencia_meses,0,24,"Carência em meses");
+  if(erros.length){toast("Confira os valores:\n• "+erros.join("\n• "),"erro");return}
+  try{
+    await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);
+    const anc=v("fAncoras");
+    await api("api-viabilidade","/enriquecimento/"+pontoAtivo,"POST",{ancoras:anc?anc.split(",").map(s=>s.trim()).filter(Boolean):[],concorrente_lider_antes:document.getElementById("fConc").checked});
+    toast("✓ Dados salvos","ok",2500);
+  }catch(e){toast(e.message,"erro");return}
+}
+async function descartarPonto(){
+  if(!confirm("Descartar este ponto? Ele sai do mapa e do ranking."))return;
+  try{
+    await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",{status:"arquivado"});
+    if(marcadores[pontoAtivo]){mapa.removeLayer(marcadores[pontoAtivo]);delete marcadores[pontoAtivo];}
+    document.getElementById("painel").classList.remove("aberto");
+    atualizarRanking();
+  }catch(e){alert(e.message)}
+}
+function num(id){const x=v(id);return x===""?null:Number(x)}
+async function analisar(){
+  await salvarDados();
+  try{await api("analisar-ponto","","POST",{ponto_id:pontoAtivo});abrirPonto(pontoAtivo);atualizarRanking();}
+  catch(e){alert(e.message)}
+}
+async function handoff(){
+  if(!confirm("Encaminhar este ponto para negociação? O time de expansão será notificado."))return;
+  try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});toast(r.mensagem,"ok");fecharPainel();atualizarRanking();}
+  catch(e){toast(e.message,"erro")}
+}
+
+// ---------- CONTADOR DE FLUXO ----------
+let contando=false,pausado=false,cont=0,seg=120,tick=null,inicioISO=null;
+function tapOuIniciar(){
+  const b=document.getElementById("btnTap");
+  if(!contando){
+    contando=true;pausado=false;cont=0;seg=120;inicioISO=new Date().toISOString();
+    document.getElementById("cnt").style.display="block";
+    document.getElementById("ctlContagem").style.display="flex";
+    b.textContent="TOQUE a cada pessoa que passar";
+    tick=setInterval(()=>{if(pausado)return;seg--;document.getElementById("tmr").textContent=`${Math.floor(seg/60)}:${String(seg%60).padStart(2,"0")}`;if(seg<=0)finalizarContagem();},1000);
+  }else if(!pausado){cont++;document.getElementById("cnt").textContent=cont;}
+}
+function pausarContagem(){
+  if(!contando)return;
+  pausado=!pausado;
+  document.getElementById("btnPause").innerHTML=pausado?"&#9654; Retomar":"&#9208; Pausar";
+  document.getElementById("btnTap").textContent=pausado?"PAUSADO":"TOQUE a cada pessoa que passar";
+}
+function cancelarContagem(){
+  if(!contando)return;
+  if(!confirm("Cancelar esta contagem? Os toques serão descartados."))return;
+  clearInterval(tick);contando=false;pausado=false;
+  resetContagemUI();
+}
+async function registrarManual(){
+  const n=num("fManual");
+  if(n==null||n<0||n>500){alert("Informe quantas pessoas passaram nos 2 minutos (0 a 500).");return}
+  const janela=document.getElementById("fJanela").checked;
+  if(!janela&&!confirm("A contagem NÃO foi feita entre 12h e 14h?\n\nEla será registrada como fora do padrão e não entra na média. Registrar mesmo assim?"))return;
+  const d=new Date();
+  if(janela){d.setHours(12,30,0,0); if(d.getTime()>Date.now()) d.setDate(d.getDate()-1);}
+  // GPS também no registro manual (validação de que a pessoa esteve no local)
+  let glat=null,glng=null;
+  try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:3000}));glat=pos.coords.latitude;glng=pos.coords.longitude;}catch(e){}
+  if(glat&&window.__pontoAtual&&distM({lat:glat,lng:glng},window.__pontoAtual)>400){
+    toast("⚠ Você parece estar longe do ponto agora. A leitura será registrada, mas o ideal é contar em frente ao imóvel.","aviso",6000);
+  }
+  try{
+    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:n,inicio:d.toISOString(),duracao_s:120,lat:glat,lng:glng});
+    toast((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"✓ Leitura registrada!\n\n")+r.proxima_orientacao,r.fora_do_padrao?"aviso":"ok",7000);
+    document.getElementById("fManual").value=""; document.getElementById("fJanela").checked=false;
+    resumoFluxo();
+  }catch(e){toast(e.message,"erro")}
+}
+function resetContagemUI(){
+  const g=id=>document.getElementById(id);
+  if(g("btnTap"))g("btnTap").textContent="Iniciar contagem";
+  if(g("tmr"))g("tmr").textContent="2:00";
+  if(g("cnt"))g("cnt").style.display="none";
+  if(g("ctlContagem"))g("ctlContagem").style.display="none";
+}
+async function finalizarContagem(){
+  clearInterval(tick);contando=false;pausado=false;
+  resetContagemUI();
+  let lat=null,lng=null;
+  try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:4000}));lat=pos.coords.latitude;lng=pos.coords.longitude;}catch(e){}
+  try{
+    const r=await api("registrar-fluxo","","POST",{ponto_id:pontoAtivo,contagem:cont,inicio:inicioISO,duracao_s:120,lat,lng});
+    toast((r.fora_do_padrao?("⚠ "+r.aviso+"\n\n"):"✓ Leitura registrada!\n\n")+r.proxima_orientacao,r.fora_do_padrao?"aviso":"ok",7000);
+    resumoFluxo();
+  }catch(e){toast(e.message,"erro")}
+}
+async function resumoFluxo(){
+  try{
+    const r=await api("registrar-fluxo","?ponto_id="+pontoAtivo,"GET");
+    const el=document.getElementById("fluxoResumo"); if(!el)return;
+    el.innerHTML=`${r.leituras.length} leitura(s) · ${r.leituras_validas} válida(s) · ${r.dias_distintos} dia(s) distinto(s)`+
+      (r.media_valida!=null?` · média <b>${r.media_valida}</b>/2min`:"")+`<br>${r.proxima_orientacao}`;
+    fluxoOkCache=(r.leituras_validas||0)>0; atualizarChecklist();
+  }catch(e){}
+}
+
+// ---------- RANKING ----------
+async function atualizarRanking(){
+  try{
+    const itens=await api("api-viabilidade","/ranking");
+    const el=document.getElementById("ranking");
+    if(!itens.length){el.innerHTML='<span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto.</span>';return}
+    el.innerHTML=itens.map(i=>`<div class="chip ${i.recomendacao==="nao_recomendado"?"nr":""}" onclick="focar('${i.ponto_id}')">
+      <span class="pos">#${i.posicao}</span> <span class="sem ${i.semaforo||"amarelo"}"></span>
+      <div class="end">${(i.endereco||"Ponto").split(",").slice(0,2).join(",")}</div>
+      <div class="st">${i.recomendacao==="sem_analise"?"sem análise":i.recomendacao.replaceAll("_"," ")}${i.fachada_recuada?" · recuada":""}${i.fluxo_media!=null?` · fluxo ${i.fluxo_media}`:""}</div>
+    </div>`).join("")+
+    `<div style="flex:0 0 auto;align-self:center;font-size:11.5px;color:var(--cinza);max-width:150px">Quanto mais opções, mais forte a comparação.</div>`;
+  }catch(e){console.warn(e)}
+}
+async function focar(id){
+  const p=await api("api-viabilidade","/pontos/"+id);
+  mapa.setView([p.lat,p.lng],17); abrirPonto(id);
+}
+
+// ---------- MODO DIAGNÓSTICO (só com ?debug=1 — invisível para o candidato) ----------
+if(new URLSearchParams(location.search).has("debug")){
+  const REG=[];
+  const reg=(tipo,msg)=>{REG.push({t:new Date().toISOString(),tipo,msg:String(msg).slice(0,300)});if(REG.length>200)REG.shift();};
+  window.addEventListener("error",e=>reg("erro",e.message+" @"+(e.filename||"").split("/").pop()+":"+e.lineno));
+  window.addEventListener("unhandledrejection",e=>reg("promise",e.reason));
+  const _f=window.fetch;
+  window.fetch=async(...a)=>{const t0=performance.now();try{const r=await _f(...a);const ms=Math.round(performance.now()-t0);if(!r.ok&&r.status!==401)reg("api",r.status+" "+String(a[0]).slice(0,120)+" ("+ms+"ms)");if(ms>10000)reg("lento",Math.round(ms/1000)+"s "+String(a[0]).slice(0,120));return r;}catch(err){reg("rede",err.message+" "+String(a[0]).slice(0,120));throw err;}};
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&document.getElementById("painel").classList.contains("aberto"))fecharPainel();
+    if(e.ctrlKey&&e.key==="k"){e.preventDefault();document.getElementById("qEnd")?.focus();}
+  });
+  const b=document.createElement("button");
+  b.textContent="🔧";b.title="Diagnóstico — exportar relatório";
+  b.style.cssText="position:fixed;bottom:20px;right:20px;z-index:5000;width:44px;height:44px;border-radius:50%;border:none;background:#374151;color:#fff;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+  b.onclick=()=>{
+    const NL=String.fromCharCode(10);
+    const md="# Diagnóstico — Viabilidade de Ponto"+NL+NL+"Gerado: "+new Date().toLocaleString("pt-BR")+NL+"Eventos: "+REG.length+NL+NL+(REG.map(r=>"- `"+r.t+"` **"+r.tipo+"** "+r.msg).join(NL)||"Nenhum evento registrado — sessão limpa.");
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));a.download="diagnostico-"+Date.now()+".md";a.click();
+    toast("Relatório de diagnóstico exportado ("+REG.length+" eventos)","ok",3000);
+  };
+  document.body.appendChild(b);
+  toast("Modo diagnóstico ativo — erros desta sessão serão registrados. Toque em 🔧 para exportar.","aviso",5000);
+}
+</script>
+</body>
+</html>
