@@ -387,24 +387,41 @@ function abrirOrientacao(){
 }
 // ---------- SELETOR ESTADO → CIDADE (IBGE oficial) ----------
 let ufsCache=null, munCache={};
+// lista fixa dos 27 estados: garante o seletor mesmo se o IBGE não responder
+const UFS_BR=[["AC","Acre"],["AL","Alagoas"],["AP","Amapá"],["AM","Amazonas"],["BA","Bahia"],["CE","Ceará"],["DF","Distrito Federal"],["ES","Espírito Santo"],["GO","Goiás"],["MA","Maranhão"],["MT","Mato Grosso"],["MS","Mato Grosso do Sul"],["MG","Minas Gerais"],["PA","Pará"],["PB","Paraíba"],["PR","Paraná"],["PE","Pernambuco"],["PI","Piauí"],["RJ","Rio de Janeiro"],["RN","Rio Grande do Norte"],["RS","Rio Grande do Sul"],["RO","Rondônia"],["RR","Roraima"],["SC","Santa Catarina"],["SP","São Paulo"],["SE","Sergipe"],["TO","Tocantins"]];
+function pintarEstados(sel,lista){
+  sel.innerHTML='<option value="">— escolha o estado —</option>'+lista.map(([s,n])=>`<option value="${s}">${n} (${s})</option>`).join("");
+  sel.dataset.ok="1";
+}
 async function carregarEstados(){
   const sel=document.getElementById("bvUf"); if(!sel||sel.dataset.ok)return;
+  pintarEstados(sel,UFS_BR); // aparece na hora, sem esperar rede
   try{
-    if(!ufsCache) ufsCache=await (await fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome")).json();
-    sel.innerHTML='<option value="">— escolha o estado —</option>'+ufsCache.map(u=>`<option value="${u.sigla}">${u.nome} (${u.sigla})</option>`).join("");
-    sel.dataset.ok="1";
-  }catch(e){ sel.innerHTML='<option value="">Não foi possível carregar — tente novamente</option>'; }
+    if(!ufsCache){
+      const r=await fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome",{signal:AbortSignal.timeout(6000)});
+      ufsCache=await r.json();
+    }
+    if(Array.isArray(ufsCache)&&ufsCache.length) pintarEstados(sel,ufsCache.map(u=>[u.sigla,u.nome]));
+  }catch(e){ /* mantém a lista fixa */ }
 }
 async function carregarMunicipios(){
   const uf=document.getElementById("bvUf").value;
   const sel=document.getElementById("bvInput");
   if(!uf){sel.innerHTML='<option value="">Escolha o estado primeiro</option>';sel.disabled=true;return}
   sel.disabled=true; sel.innerHTML='<option value="">Carregando cidades…</option>';
-  try{
-    if(!munCache[uf]) munCache[uf]=await (await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`)).json();
-    sel.innerHTML='<option value="">— escolha a cidade —</option>'+munCache[uf].map(m=>`<option value="${m.nome}">${m.nome}</option>`).join("");
-    sel.disabled=false;
-  }catch(e){ sel.innerHTML='<option value="">Não foi possível carregar as cidades</option>'; }
+  for(let t=0;t<2;t++){
+    try{
+      if(!munCache[uf]){
+        const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`,{signal:AbortSignal.timeout(8000)});
+        munCache[uf]=await r.json();
+      }
+      sel.innerHTML='<option value="">— escolha a cidade —</option>'+munCache[uf].map(m=>`<option value="${m.nome}">${m.nome}</option>`).join("");
+      sel.disabled=false; return;
+    }catch(e){ if(t===0) await new Promise(r=>setTimeout(r,1200)); }
+  }
+  // último recurso: deixa digitar o nome
+  sel.outerHTML='<input type="text" id="bvInput" placeholder="digite o nome da cidade">';
+  toast("Não consegui carregar a lista de cidades. Digite o nome da cidade.","aviso",6000);
 }
 function fecharBoasVindas(){document.getElementById("boasvindas").style.display="none";}
 function distM(a,b){
@@ -554,12 +571,17 @@ async function buscarComercio(lat,lng){
 }
 function desenharFoco(ruas){
   camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
-  const max=ruas[0]?.forca||1;
   ruas.forEach((r,i)=>{
-    const op=0.12+0.38*(r.forca/max);
-    const ci=L.circle([r.lat,r.lng],{radius:280,color:"#D64545",weight:i===0?3:2,fillColor:"#D64545",fillOpacity:op})
-      .bindTooltip("🎯 "+r.rua+" — corredor prioritário para procurar imóvel").addTo(mapa);
+    // contorno vermelho visível + miolo quase transparente: marca a área sem tampar o mapa
+    const ci=L.circle([r.lat,r.lng],{radius:230,color:"#D64545",weight:i===0?3:2,opacity:.9,dashArray:i===0?null:"7 6",
+      fillColor:"#D64545",fillOpacity:i===0?.10:.05})
+      .bindTooltip("🎯 "+r.rua+" — procure imóveis nesta rua",{sticky:true}).addTo(mapa);
     camadaFoco.push(ci);
+    // etiqueta com a posição e o nome da rua, direto no mapa
+    const et=L.marker([r.lat,r.lng],{icon:L.divIcon({className:"",iconSize:null,
+      html:`<div style="transform:translate(-50%,-50%);background:${i===0?"#D64545":"#fff"};color:${i===0?"#fff":"#D64545"};border:2px solid #D64545;border-radius:14px;padding:3px 9px;font:700 11.5px 'Segoe UI',sans-serif;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)">#${i+1} ${r.rua}</div>`})})
+      .addTo(mapa);
+    camadaFoco.push(et);
   });
   return ruas;
 }
