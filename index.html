@@ -387,9 +387,10 @@ function cgFechar(){document.getElementById("carregando").style.display="none";}
 
 // ---------- CIRCULAÇÃO A PÉ (multi-sinal, por segmento de rua) ----------
 const RE_ANCORA=/casas? bahia|pernambucanas|riachuelo|magazine luiza|magalu|lojas marisa|renner|lojas americanas|caedu|torra/i;
-async function overpass(q,tentativas){
-  const servidores=["https://overpass.kumi.systems/api/interpreter","https://overpass-api.de/api/interpreter"];
-  const n=tentativas||2;
+const OVERPASS=["https://overpass.kumi.systems/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter"];
+async function overpass(q,tentativas,prefer){
+  const servidores=prefer!=null?[OVERPASS[prefer%OVERPASS.length],...OVERPASS.filter((_,i)=>i!==prefer%OVERPASS.length)]:OVERPASS;
+  const n=tentativas||3;
   for(let t=0;t<n;t++){
     const url=servidores[t%servidores.length];
     try{
@@ -407,10 +408,11 @@ async function analisarCirculacao(lat,lng,ruasValidadas){
   const bbox=`${(lat-d).toFixed(3)},${(lng-d).toFixed(3)},${(lat+d).toFixed(3)},${(lng+d).toFixed(3)}`;
   cgPasso("Consultando o mapa da região (comércio, pedestres e ruas)…",25);
   // as 3 consultas em PARALELO — antes eram sequenciais e levavam minutos
+  // cada consulta em um servidor diferente (evita limite de conexões simultâneas por IP)
   const [comercio,pedestres,vias]=await Promise.all([
-    overpass(`[out:json][timeout:25];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 1200;(way["shop"="mall"](${bbox});way["building"="mall"](${bbox}););out geom qt 120;`),
-    overpass(`[out:json][timeout:25];(node["highway"="bus_stop"](${bbox});node["highway"="crossing"](${bbox});node["amenity"~"^(bank|pharmacy|bus_station)$"](${bbox}););out qt 2500;`),
-    overpass(`[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|pedestrian|living_street)$"]["name"](${bbox});out geom qt 900;`)
+    overpass(`[out:json][timeout:25];(node["shop"](${bbox});way["shop"](${bbox}););out center qt 1200;(way["shop"="mall"](${bbox});way["building"="mall"](${bbox}););out geom qt 120;`,3,0),
+    overpass(`[out:json][timeout:25];(node["highway"="bus_stop"](${bbox});node["highway"="crossing"](${bbox});node["amenity"~"^(bank|pharmacy|bus_station)$"](${bbox}););out qt 2500;`,3,1),
+    overpass(`[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|pedestrian|living_street)$"]["name"](${bbox});out geom qt 900;`,3,2)
   ]);
   cgPasso("Medindo onde as pessoas circulam a pé…",70);
 
