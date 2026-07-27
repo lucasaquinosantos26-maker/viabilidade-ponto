@@ -86,8 +86,23 @@ body{height:100vh;overflow:hidden;background:#f4f6fb}
 .painel header button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer}
 .painel .corpo{padding:16px;overflow-y:auto;flex:1}
 .card{border:1px solid #e3e8f2;border-radius:12px;padding:14px;margin-bottom:12px}
+/* passo a passo do painel */
+.passos{display:flex;gap:6px;padding:12px 14px 10px;background:#fff;border-bottom:1px solid #e3e8f2;position:sticky;top:0;z-index:5;align-items:center}
+.passos .bola{width:26px;height:26px;border-radius:50%;background:#eef2f8;color:var(--cinza);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto;cursor:pointer}
+.passos .bola.on{background:var(--azul);color:#fff}
+.passos .bola.ok{background:var(--verde);color:#fff}
+.passos .tr{flex:1;height:2px;background:#e3e8f2}
+.passoTit{padding:12px 14px 0;font-size:12px;color:var(--cinza);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.navpasso{display:flex;gap:8px;padding:0 14px 6px}
+.navpasso .btn{margin-top:0}
+#prechk{position:fixed;inset:0;z-index:2700;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center}
+#prechk .cx{background:#fff;border-radius:16px;padding:20px;width:400px;max-width:92vw}
+#prechk .selo{display:inline-block;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:99px;margin-bottom:10px}
+#prechk h3{font-size:16.5px;color:#1c2430;margin:0 0 6px}
+#prechk p{font-size:13.5px;color:#3d4757;line-height:1.5;margin:0 0 10px}
+#prechk .obs{font-size:12px;color:var(--cinza);background:#f6f8fc;border-radius:8px;padding:9px 11px;margin-bottom:12px}
 .sem{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:-2px}
-.sem.verde{background:var(--verde)}.sem.amarelo{background:var(--amarelo)}.sem.vermelho{background:var(--verm)}
+.sem.verde{background:var(--verde)}.sem.amarelo{background:var(--amarelo)}.sem.vermelho{background:var(--verm)}.sem.neutro{background:#c8d0dd;box-shadow:inset 0 0 0 2px #fff}
 .faixa{font-size:20px;font-weight:700;color:#1c2430}
 label{display:block;font-size:12px;color:var(--cinza);margin:10px 0 4px;font-weight:600}
 input[type=number],input[type=text],input[type=password],select{width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px;background:#fff}
@@ -159,6 +174,15 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
     <div class="li">🔥 Calor = concentração de comércio e pedestres</div>
   </div>
 </div>
+<div id="prechk"><div class="cx">
+  <span class="selo" id="pkSelo"></span>
+  <h3 id="pkTit"></h3>
+  <p id="pkTxt"></p>
+  <div class="obs">Marcar aqui <b>não</b> significa que o ponto foi aprovado. A análise só sai depois que você preencher os dados e a contagem de fluxo.</div>
+  <button class="btn pri" id="pkOk" style="margin-top:0">Cadastrar este imóvel</button>
+  <button class="btn sec" id="pkIr" style="display:none">Levar o mapa até a rua recomendada</button>
+  <button class="btn" id="pkNao" style="background:none;color:var(--cinza)">Escolher outro local</button>
+</div></div>
 <div id="confirmar"><div class="cx"><h3 id="cfTitulo">Confirmar</h3><p id="cfTexto"></p>
   <button class="btn pri" id="cfSim">Confirmar</button>
   <button class="btn sec" id="cfNao">Cancelar</button>
@@ -359,7 +383,7 @@ async function abrirExpansao(){
         <h4 style="margin-top:0">📊 Pontos da rede (${ps.length}) — visão interna</h4>
         ${ps.map(p=>`
           <div style="border-bottom:1px solid #eef2fd;padding:8px 0;font-size:12.5px">
-            <span class="sem ${p.semaforo||"amarelo"}"></span><b>${(p.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
+            <span class="sem ${p.semaforo||"neutro"}"></span><b>${(p.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
             <div style="color:var(--cinza)">${p.cidade||""} · ${p.bandeira||"—"} · ${p.candidato||""}${p.status==="handoff"?" · <b>EM NEGOCIAÇÃO</b>":""}</div>
             <div>Score: <b>${p.score??"—"}</b>/100 · Projeção: <b>${fmtProj(p.projecao)}</b> · Fluxo: ${p.fluxo_media??"—"}/2min · ${(p.recomendacao||"").replaceAll("_"," ")}</div>
           </div>`).join("")||'<div class="vazio"><div class="ic">🗺</div><b>Nenhum ponto cadastrado</b><span>Os pontos marcados pelos candidatos aparecem aqui com score e projeção.</span></div>'}
@@ -653,6 +677,7 @@ async function buscarComercio(lat,lng){
     .slice(0,8);
 }
 function desenharFoco(ruas){
+  window.ruasFoco=ruas||[];
   camadaFoco.forEach(l=>mapa.removeLayer(l)); camadaFoco=[];
   ruas.forEach((r,i)=>{
     // contorno vermelho visível + miolo quase transparente: marca a área sem tampar o mapa
@@ -840,20 +865,67 @@ async function buscarEndereco(){
   }
 }
 let criandoPonto=false;
+// lugares que não são imóvel comercial de rua — evita marcar escola, praça, ciclovia por engano
+const NAO_COMERCIAL={school:"uma escola",kindergarten:"uma creche",hospital:"um hospital",university:"uma universidade",park:"um parque",pitch:"uma quadra",cemetery:"um cemitério",cycleway:"uma ciclovia",footway:"uma passagem de pedestres",water:"uma área de água",forest:"uma área verde",industrial:"uma área industrial",railway:"uma área ferroviária",construction:"uma obra",garden:"um jardim",playground:"um playground"};
+// mede a distância do clique até o corredor recomendado mais próximo (já desenhado no mapa)
+function corredorMaisProximo(lat,lng){
+  const rs=window.ruasFoco||[]; let m=null;
+  for(const r of rs){ if(r.lat==null)continue; const d=distM({lat,lng},{lat:r.lat,lng:r.lng}); if(!m||d<m.dist) m={dist:Math.round(d),rua:r.rua,lat:r.lat,lng:r.lng}; }
+  return m;
+}
+// CLIQUE NO MAPA = pré-checagem, não cadastro. O candidato só cadastra depois de ver o parecer.
 async function novoPonto(lat,lng,endTexto){
-  if(contando){alert("Termine ou cancele a contagem antes de marcar outro ponto.");return}
+  if(contando){toast("Termine ou cancele a contagem antes de marcar outro ponto.","erro");return}
   if(criandoPonto)return; criandoPonto=true;
-  let endereco=endTexto,cidade=null,uf=null;
+  let endereco=endTexto,cidade=null,uf=null,tipoLugar=null;
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"}});
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&lat=${lat}&lon=${lng}`,{headers:{"Accept-Language":"pt-BR"},signal:AbortSignal.timeout(8000)});
     const d=await r.json();
     endereco=endereco||d.display_name; cidade=d.address?.city||d.address?.town||d.address?.municipality||null; uf=d.address?.state_code||null;
+    tipoLugar=NAO_COMERCIAL[d.type]||NAO_COMERCIAL[d.address?.amenity]||NAO_COMERCIAL[d.address?.leisure]||null;
   }catch(e){}
+  const cor=corredorMaisProximo(lat,lng);
+  const seguir=await preChecar({lat,lng,endereco,cor,tipoLugar});
+  if(!seguir){criandoPonto=false;return}
   try{
     const p=await api("api-viabilidade","/pontos","POST",{lat,lng,endereco,cidade,uf});
-    plotar(p); abrirPonto(p.id); atualizarRanking();
-  }catch(e){alert(e.message)}
+    plotar(p); await abrirPonto(p.id); atualizarRanking();
+    const d=document.getElementById("dica"); if(d)d.style.display="none";
+  }catch(e){toast(e.message,"erro")}
   criandoPonto=false;
+}
+// mostra o parecer preliminar do local e devolve true se o candidato quiser cadastrar
+function preChecar({lat,lng,endereco,cor,tipoLugar}){
+  return new Promise(res=>{
+    const m=document.getElementById("prechk");
+    const selo=document.getElementById("pkSelo"),tit=document.getElementById("pkTit"),txt=document.getElementById("pkTxt");
+    const bIr=document.getElementById("pkIr"),bOk=document.getElementById("pkOk");
+    const curto=(endereco||"este local").split(",").slice(0,2).join(",");
+    let cls,rot,titulo,corpo;
+    if(tipoLugar){
+      cls="#fdeaea|#B23A3A"; rot="ATENÇÃO"; titulo="Isto parece ser "+tipoLugar;
+      corpo=`Você marcou ${curto}. Nossas lojas ficam em imóvel comercial de rua, com vitrine para a calçada. Confira se o pin está sobre a porta do imóvel que você visitou.`;
+    }else if(cor&&cor.dist<=250){
+      cls="#e8f6ee|#1E7B45"; rot="CORREDOR RECOMENDADO"; titulo="Boa — este trecho está em uma rua de foco";
+      corpo=`${curto} fica na região da <b>${cor.rua}</b>, uma das ruas que recomendamos para a sua busca. Isso é um bom sinal, mas ainda não é a análise: siga o passo a passo para avaliar o imóvel.`;
+    }else if(cor&&cor.dist<=800){
+      cls="#fef6e0|#8A6100"; rot="PERTO DO CORREDOR"; titulo=`Está a cerca de ${cor.dist} m da rua recomendada`;
+      corpo=`${curto} não está na <b>${cor.rua}</b>, que é onde recomendamos procurar. Alguns metros mudam muito o movimento de pedestres. Vale conferir se há imóvel disponível na própria ${cor.rua}.`;
+      bIr.style.display="block";
+    }else{
+      cls="#fef6e0|#8A6100"; rot="FORA DAS RUAS DE FOCO"; titulo="Este local está fora dos corredores recomendados";
+      corpo=cor?`${curto} está a cerca de ${cor.dist} m da <b>${cor.rua}</b>. Fora dos corredores, o movimento de pedestres costuma ser bem menor.`:`Ainda não temos corredores mapeados aqui. Você pode cadastrar, mas o resultado dependerá da contagem de fluxo feita na calçada.`;
+      if(cor)bIr.style.display="block";
+    }
+    const [bg,fg]=cls.split("|");
+    selo.style.background=bg; selo.style.color=fg; selo.textContent=rot;
+    tit.textContent=titulo; txt.innerHTML=corpo;
+    m.style.display="flex";
+    const fim=v=>{m.style.display="none";bIr.style.display="none";res(v);};
+    bOk.onclick=()=>fim(true);
+    document.getElementById("pkNao").onclick=()=>fim(false);
+    bIr.onclick=()=>{ if(cor)mapa.setView([cor.lat,cor.lng],17); fim(false); };
+  });
 }
 
 // ---------- PAINEL DO PONTO ----------
@@ -864,43 +936,45 @@ async function abrirPonto(id){
   document.getElementById("pTitulo").textContent=(p.endereco||"Ponto").split(",").slice(0,2).join(",");
   const a=p.ultima_analise?.resultado_sanitizado;
   document.getElementById("pCorpo").innerHTML=`
-    <div class="abas">
-      <button class="aba on" data-s="analise" onclick="trocarAba('analise')">Análise</button>
-      <button class="aba" data-s="dados" onclick="trocarAba('dados')">Dados</button>
-      <button class="aba" data-s="fluxo" onclick="trocarAba('fluxo')">Fluxo</button>
-      <button class="aba" data-s="fotos" onclick="trocarAba('fotos')">Fotos</button>
-    </div>
-    <div class="abaSec" data-s="analise">
-    ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber na aba <b>Dados</b> e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
-    <div class="card">
-      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
-      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
-    </div>
-    </div>
-    <div class="abaSec" data-s="dados" style="display:none">
+    <div class="passos" id="passos"></div>
+    <div class="passoTit" id="passoTit"></div>
+    <div class="abaSec" data-s="imovel">
     <div class="card">
       <h4 style="margin-top:0">Dados do imóvel</h4>
       <div class="linha2">
         <div><label>Fachada (m)</label><input type="number" id="fFach" step="0.1" value="${p.fachada_largura_m??""}"></div>
         <div><label>Salão (m²)</label><input type="number" id="fSalao" value="${p.salao_m2??""}"></div>
       </div>
-      <div class="linha2">
-        <div><label>Sobreloja (m²)</label><input type="number" id="fSobre" value="${p.sobreloja_m2??""}"></div>
-        <div><label>Aluguel pedido (R$)</label><input type="number" id="fAlug" value="${p.aluguel_pedido??""}"></div>
-      </div>
-      <div class="linha2">
-        <div><label>Bandeira pretendida</label><select id="fBand" style="width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px;background:#fff"><option value="">— selecionar —</option>${["Center","Rubi","Mil","XT","Extra","Vale","Big","Bela","Mais Óptica","Multi"].map(b=>`<option ${p.bandeira===b?"selected":""}>${b}</option>`).join("")}</select></div>
-        <div><label>Carência (meses)</label><input type="number" id="fCar" min="0" max="24" value="${p.carencia_meses??""}"></div>
-      </div>
-      <div class="chk"><input type="checkbox" id="f5anos" ${p.contrato_5anos?"checked":""}><span>Proprietário aceita contrato mínimo de <b>5 anos</b></span></div>
+      <div><label>Sobreloja (m²)</label><input type="number" id="fSobre" value="${p.sobreloja_m2??""}"></div>
       <div class="chk"><input type="checkbox" id="fRec" ${p.fachada_recuada?"checked":""}><span><b>Fachada recuada</b> (afastada da calçada)</span></div>
       <div class="chk"><input type="checkbox" id="fEsq" ${p.esquina?"checked":""}><span>É esquina</span></div>
+    </div>
+    <div class="navpasso"><button class="btn pri" onclick="irPasso(2)">Continuar →</button></div>
+    </div>
+
+    <div class="abaSec" data-s="negocio" style="display:none">
+    <div class="card">
+      <h4 style="margin-top:0">Aluguel e contrato</h4>
+      <div class="linha2">
+        <div><label>Aluguel pedido (R$)</label><input type="number" id="fAlug" value="${p.aluguel_pedido??""}"></div>
+        <div><label>Carência (meses)</label><input type="number" id="fCar" min="0" max="24" value="${p.carencia_meses??""}"></div>
+      </div>
+      <label>Bandeira pretendida</label>
+      <select id="fBand" style="width:100%;padding:9px 11px;border:1px solid #d5dbe7;border-radius:8px;font-size:14px;background:#fff"><option value="">— selecionar —</option>${["Center","Rubi","Mil","XT","Extra","Vale","Big","Bela","Mais Óptica","Multi"].map(b=>`<option ${p.bandeira===b?"selected":""}>${b}</option>`).join("")}</select>
+      <div class="chk"><input type="checkbox" id="f5anos" ${p.contrato_5anos?"checked":""}><span>Proprietário aceita contrato mínimo de <b>5 anos</b></span></div>
+    </div>
+    <div class="navpasso"><button class="btn sec" onclick="irPasso(1)">← Voltar</button><button class="btn pri" onclick="irPasso(3)">Continuar →</button></div>
+    </div>
+
+    <div class="abaSec" data-s="entorno" style="display:none">
+    <div class="card">
+      <h4 style="margin-top:0">O que existe em volta</h4>
+      <div style="font-size:12.5px;color:var(--cinza)">Olhe a mesma calçada e a de frente, até uns 200 m para cada lado.</div>
       <label>Lojas âncora por perto (ex.: Casas Bahia, Pernambucanas — ou escreva "nenhuma")</label>
       <input type="text" id="fAncoras" value="${(p.enriquecimento?.ancoras||[]).join(", ")}">
       <div class="chk"><input type="checkbox" id="fConc" ${p.enriquecimento?.concorrente_lider_antes?"checked":""}><span>Tem ótica concorrente forte <b>antes</b> do ponto, no mesmo trajeto</span></div>
-      <button class="btn sec" id="bSalvar" onclick="ocupado('bSalvar','Salvando…',salvarDados)">Salvar dados</button>
-      <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
+    <div class="navpasso"><button class="btn sec" onclick="irPasso(2)">← Voltar</button><button class="btn pri" onclick="irPasso(4)">Continuar →</button></div>
     </div>
     <div class="abaSec" data-s="fotos" style="display:none">
     <div class="card">
@@ -910,6 +984,7 @@ async function abrirPonto(id){
       <input type="file" id="fFoto" accept="image/*" capture="environment" style="display:none" onchange="enviarFoto(this)">
       <button class="btn sec" id="bFoto" onclick="document.getElementById('fFoto').click()">📷 Adicionar foto</button>
     </div>
+    <div class="navpasso"><button class="btn sec" onclick="irPasso(4)">← Voltar</button><button class="btn pri" onclick="irPasso(6)">Continuar →</button></div>
     </div>
     <div class="abaSec" data-s="fluxo" style="display:none">
     <div class="card">
@@ -935,13 +1010,27 @@ async function abrirPonto(id){
       </div>
       <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
     </div>
+    <div class="navpasso"><button class="btn sec" onclick="irPasso(3)">← Voltar</button><button class="btn pri" onclick="irPasso(5)">Continuar →</button></div>
     </div>
+    <div class="abaSec" data-s="resultado" style="display:none">
+    ${a?cardAnalise(a):`<div class="aviso">Você percorreu as etapas. Toque em <b>Analisar este ponto</b> para ver o parecer — o motor considera o entorno, o imóvel e a contagem de fluxo.</div>`}
+    <div class="card">
+      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
+      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
+    </div>
+    <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar este ponto</button>
     <button class="btn amar" id="bHandoff" onclick="ocupado('bHandoff','Enviando…',handoff)">✓ Seguir para negociação</button>
+    <div class="navpasso"><button class="btn sec" onclick="irPasso(5)">← Voltar</button></div>
     <button class="btn" style="background:none;color:var(--verm)" id="bDescartar" onclick="ocupado('bDescartar','Descartando…',descartarPonto)">Descartar este ponto</button>
+    </div>
     <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
   document.getElementById("painel").classList.add("aberto");
   destacarPin(id);
-  resumoFluxo(); listarFotos(); atualizarChecklist();
+  await resumoFluxo(); await listarFotos();
+  // abre no primeiro passo ainda não cumprido — quem já preencheu tudo cai no resultado
+  const prox=[1,2,3,4,5].find(n=>!passoCumprido(n));
+  await irPasso(a?6:(prox||6),true);
+  atualizarChecklist();
 }
 
 // ---------- FOTOS + CHECKLIST (Etapa 2) ----------
@@ -969,6 +1058,47 @@ async function enviarFoto(inp){
   }catch(e){toast(e.message,"erro")}
   b.disabled=false; b.textContent="📷 Adicionar foto"; inp.value="";
 }
+// ---------- PASSO A PASSO DO PAINEL ----------
+const PASSOS=[
+ {n:1,s:"imovel",  t:"Etapa 1 de 6 · O imóvel"},
+ {n:2,s:"negocio", t:"Etapa 2 de 6 · Aluguel e contrato"},
+ {n:3,s:"entorno", t:"Etapa 3 de 6 · O que existe em volta"},
+ {n:4,s:"fluxo",   t:"Etapa 4 de 6 · Contagem de fluxo"},
+ {n:5,s:"fotos",   t:"Etapa 5 de 6 · Fotos do imóvel"},
+ {n:6,s:"resultado",t:"Etapa 6 de 6 · Resultado"}
+];
+let passoAtual=1;
+// o passo está cumprido? usado para pintar as bolinhas e liberar o resultado
+function passoCumprido(n){
+  const p=window.__pontoAtual||{};
+  if(n===1) return p.fachada_largura_m!=null&&p.salao_m2!=null;
+  if(n===2) return p.aluguel_pedido!=null&&p.bandeira;
+  if(n===3) return !!(p.enriquecimento&&(p.enriquecimento.ancoras||[]).length);
+  if(n===4) return fluxoOkCache===true;
+  if(n===5) return fotosCache.length>0;
+  return !!(p.ultima_analise);
+}
+function pintarPassos(){
+  const el=document.getElementById("passos"); if(!el)return;
+  el.innerHTML=PASSOS.map((x,i)=>{
+    const cls=x.n===passoAtual?"on":(passoCumprido(x.n)?"ok":"");
+    return `<div class="bola ${cls}" title="${x.t}" onclick="irPasso(${x.n},true)">${passoCumprido(x.n)&&x.n!==passoAtual?"✓":x.n}</div>`+(i<PASSOS.length-1?'<div class="tr"></div>':"");
+  }).join("");
+  const t=document.getElementById("passoTit"); if(t)t.textContent=(PASSOS.find(x=>x.n===passoAtual)||{}).t||"";
+}
+// avança/volta salvando o que foi digitado; nunca pula direto para o resultado
+async function irPasso(n,semSalvar){
+  if(!semSalvar&&n>passoAtual){ try{ await salvarDados(true); }catch(e){} }
+  if(n===6&&!semSalvar){
+    const faltam=[1,2,3,4].filter(x=>!passoCumprido(x)).length;
+    if(faltam) toast(`Faltam ${faltam} etapa(s) — o parecer sai mais preciso completando tudo.`,"");
+  }
+  passoAtual=Math.min(6,Math.max(1,n));
+  const alvo=(PASSOS.find(x=>x.n===passoAtual)||{}).s;
+  document.querySelectorAll("#pCorpo .abaSec").forEach(d=>d.style.display=d.dataset.s===alvo?"block":"none");
+  pintarPassos(); atualizarChecklist();
+  const c=document.getElementById("pCorpo"); if(c)c.scrollTop=0;
+}
 function trocarAba(nome){
   document.querySelectorAll("#pCorpo .aba").forEach(b=>b.classList.toggle("on",b.dataset.s===nome));
   document.querySelectorAll("#pCorpo .abaSec").forEach(d=>d.style.display=d.dataset.s===nome?"block":"none");
@@ -978,7 +1108,10 @@ function atualizarChecklist(){
   const it=(ok,txt)=>`<div style="padding:3px 0">${ok?"✅":"⬜"} ${txt}</div>`;
   const pend=[!fluxoOkCache,p.aluguel_pedido==null,p.carencia_meses==null,p.contrato_5anos!==true,!fotosCache.length,!p.bandeira].filter(Boolean).length;
   const bA=document.getElementById("bAnalisar");
-  if(bA&&!bA.disabled) bA.textContent=pend?`Analisar ponto (faltam ${pend} ${pend===1?"item":"itens"})`:"Analisar ponto ✓";
+  if(bA&&!bA.disabled) bA.textContent=pend?`Analisar este ponto (faltam ${pend} ${pend===1?"item":"itens"})`:"Analisar este ponto ✓";
+  const bH=document.getElementById("bHandoff");
+  if(bH){ const temAnalise=!!(p.ultima_analise); bH.style.display=temAnalise?"block":"none"; }
+  try{ pintarPassos(); }catch(e){}
   el.innerHTML=
     it(fluxoOkCache,"Contagem de fluxo (mínimo 1 leitura válida)")+
     it(p.aluguel_pedido!=null,"Valor do aluguel pedido")+
@@ -1006,7 +1139,7 @@ async function fecharPainel(){
   document.getElementById("painel").classList.remove("aberto");
 }
 
-async function salvarDados(){
+async function salvarDados(silencioso){
   const body={fachada_largura_m:num("fFach"),salao_m2:num("fSalao"),sobreloja_m2:num("fSobre"),aluguel_pedido:num("fAlug"),fachada_recuada:document.getElementById("fRec").checked,esquina:document.getElementById("fEsq").checked,bandeira:v("fBand")||null,carencia_meses:num("fCar"),contrato_5anos:document.getElementById("f5anos").checked};
   const erros=[];
   const faixaOk=(x,min,max,nome)=>{if(x!=null&&(x<min||x>max))erros.push(nome+" (entre "+min+" e "+max+")")};
@@ -1015,13 +1148,17 @@ async function salvarDados(){
   faixaOk(body.sobreloja_m2,0,1000,"Sobreloja em m²");
   faixaOk(body.aluguel_pedido,0,200000,"Aluguel em R$");
   faixaOk(body.carencia_meses,0,24,"Carência em meses");
-  if(erros.length){toast("Confira os valores:\n• "+erros.join("\n• "),"erro");return}
+  if(erros.length){toast("Confira os valores:\n• "+erros.join("\n• "),"erro");throw new Error("valores invalidos")}
   try{
     await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",body);
     const anc=v("fAncoras");
     await api("api-viabilidade","/enriquecimento/"+pontoAtivo,"POST",{ancoras:anc?anc.split(",").map(s=>s.trim()).filter(Boolean):[],concorrente_lider_antes:document.getElementById("fConc").checked});
-    toast("✓ Dados salvos","ok",2500);
-  }catch(e){toast(e.message,"erro");return}
+    // mantém o cache local em dia para as etapas marcarem ✓ na hora
+    const pa=window.__pontoAtual||{}; Object.assign(pa,body);
+    pa.enriquecimento=Object.assign(pa.enriquecimento||{},{ancoras:anc?anc.split(",").map(s=>s.trim()).filter(Boolean):[],concorrente_lider_antes:document.getElementById("fConc").checked});
+    window.__pontoAtual=pa;
+    if(!silencioso) toast("✓ Dados salvos","ok",2500);
+  }catch(e){toast(e.message,"erro");throw e}
 }
 async function descartarPonto(){
   if(!(await confirmar("Ele sai do mapa e do seu ranking. Esta ação não pode ser desfeita.","Descartar este ponto?")))return;
@@ -1035,10 +1172,14 @@ async function descartarPonto(){
 function num(id){const x=v(id);return x===""?null:Number(x)}
 async function analisar(){
   await salvarDados();
-  try{await api("analisar-ponto","","POST",{ponto_id:pontoAtivo});abrirPonto(pontoAtivo);atualizarRanking();}
-  catch(e){alert(e.message)}
+  // a varredura do entorno (comércio e âncoras no mapa) é feita no servidor, com cache — não depende do celular do candidato
+  const b=document.getElementById("bAnalisar"); const rot=b?b.textContent:null;
+  if(b){b.disabled=true;b.textContent="Analisando o entorno…";}
+  try{await api("analisar-ponto","","POST",{ponto_id:pontoAtivo});await abrirPonto(pontoAtivo);atualizarRanking();}
+  catch(e){toast(e.message,"erro"); if(b){b.disabled=false;b.textContent=rot;}}
 }
 async function handoff(){
+  if(!(window.__pontoAtual||{}).ultima_analise){ toast("Analise o ponto antes de encaminhar para negociação.","erro"); return }
   if(!(await confirmar("O time de expansão será notificado e entrará em contato.","Encaminhar este ponto para negociação?")))return;
   try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});toast(r.mensagem,"ok");fecharPainel();atualizarRanking();}
   catch(e){toast(e.message,"erro")}
@@ -1126,7 +1267,7 @@ async function atualizarRanking(){
     el.className="ranking"+(fechado?" fechado":"");
     el.innerHTML=`<button class="toggle" onclick="toggleRanking()">${fechado?"▲":"▼"} Meus pontos (${itens.length})</button>`+
     (fechado?"":itens.map(i=>`<div class="chip ${i.recomendacao==="nao_recomendado"?"nr":""}" onclick="focar('${i.ponto_id}')">
-      <span class="pos">#${i.posicao}</span> <span class="sem ${i.semaforo||"amarelo"}"></span>
+      <span class="pos">#${i.posicao}</span> <span class="sem ${i.semaforo||"neutro"}"></span>
       <div class="end">${(i.endereco||"Ponto").split(",").slice(0,2).join(",")}</div>
       <div class="st">${i.recomendacao==="sem_analise"?"sem análise":i.recomendacao.replaceAll("_"," ")}${i.fachada_recuada?" · recuada":""}${i.fluxo_media!=null?` · fluxo ${i.fluxo_media}`:""}</div>
     </div>`).join("")+
