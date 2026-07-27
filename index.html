@@ -542,10 +542,35 @@ async function orientarCidade(){
   cgPasso("Consultando o perfil da cidade (IBGE + rede)…",10);
   let ter=null;
   try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
-  let ruas=[];
-  try{ ruas=await analisarCirculacao(g.lat,g.lng,ter?.ruas_validadas||[]); }
-  catch(e){ console.warn("circulacao",e); toast("Os dados de mapa demoraram a responder. Tente novamente em alguns segundos.","aviso",6000); }
+  let ruas=[], doCache=false;
+  // 1) cache da cidade (instantâneo) — inclui os corredores já validados pela rede
+  try{
+    const c=await api("corredores-cidade","?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:""));
+    if(c?.encontrado&&c.ruas?.length){ ruas=c.ruas; doCache=true; cgPasso("Corredores da cidade já mapeados ✓",60); }
+  }catch(e){console.warn("cache",e)}
+  // 2) se o cache é só da rede (poucas ruas) ou está velho, tenta enriquecer com o mapa
+  const precisaCalcular=!doCache||ruas.length<4||(ruas.every(r=>r.origem==="rede"));
+  if(precisaCalcular){
+    try{
+      const novas=await analisarCirculacao(g.lat,g.lng,ter?.ruas_validadas||[]);
+      if(novas.length){
+        const nomes=new Set(ruas.map(r=>(r.rua||"").toLowerCase()));
+        ruas=[...ruas,...novas.filter(n=>!nomes.has((n.rua||"").toLowerCase()))].sort((a,b)=>(b.score||0)-(a.score||0));
+        try{ await api("corredores-cidade","","POST",{cidade:ter?.cidade||cid,uf:ter?.uf||uf,ruas}); }catch(e){}
+      }
+    }catch(e){
+      console.warn("circulacao",e);
+      if(!ruas.length) toast("Os servidores de mapa estão lentos agora. Tente novamente em alguns minutos — ou explore o mapa manualmente.","aviso",7000);
+      else toast("Mostrando os corredores já conhecidos desta cidade (o mapa detalhado está lento agora).","aviso",6000);
+    }
+  }
   cgPasso("Desenhando os corredores no mapa…",95);
+  // corredores da rede sem coordenada: geocodifica para desenhar no mapa
+  for(const r of ruas){
+    if(r.lat&&r.lng) continue;
+    try{ const gg=await geocodificar(r.rua+", "+(ter?.cidade||cid)+", "+(ter?.uf||uf||"")+", Brasil"); if(gg){r.lat=gg.lat;r.lng=gg.lng;} }catch(e){}
+  }
+  ruas=ruas.filter(r=>r.lat&&r.lng);
   desenharFoco(ruas);
   if(ruas.length) mapa.fitBounds(L.latLngBounds(ruas.map(a=>[a.lat,a.lng])).pad(0.3),{maxZoom:15});
   cgFechar();
