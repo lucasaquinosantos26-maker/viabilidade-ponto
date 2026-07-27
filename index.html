@@ -870,14 +870,14 @@ async function abrirPonto(id){
       <button class="aba" data-s="fluxo" onclick="trocarAba('fluxo')">Fluxo</button>
       <button class="aba" data-s="fotos" onclick="trocarAba('fotos')">Fotos</button>
     </div>
-    <div class="sec" data-s="analise">
+    <div class="abaSec" data-s="analise">
     ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber na aba <b>Dados</b> e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
     <div class="card">
       <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
       <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
     </div>
     </div>
-    <div class="sec" data-s="dados" style="display:none">
+    <div class="abaSec" data-s="dados" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">Dados do imóvel</h4>
       <div class="linha2">
@@ -902,7 +902,7 @@ async function abrirPonto(id){
       <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
     </div>
-    <div class="sec" data-s="fotos" style="display:none">
+    <div class="abaSec" data-s="fotos" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">📷 Fotos do imóvel</h4>
       <div style="font-size:12px;color:var(--cinza)">Fachada, interior, vitrine e entorno — fazem parte da análise final.</div>
@@ -911,7 +911,7 @@ async function abrirPonto(id){
       <button class="btn sec" id="bFoto" onclick="document.getElementById('fFoto').click()">📷 Adicionar foto</button>
     </div>
     </div>
-    <div class="sec" data-s="fluxo" style="display:none">
+    <div class="abaSec" data-s="fluxo" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
       <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
@@ -971,7 +971,7 @@ async function enviarFoto(inp){
 }
 function trocarAba(nome){
   document.querySelectorAll("#pCorpo .aba").forEach(b=>b.classList.toggle("on",b.dataset.s===nome));
-  document.querySelectorAll("#pCorpo .sec").forEach(d=>d.style.display=d.dataset.s===nome?"block":"none");
+  document.querySelectorAll("#pCorpo .abaSec").forEach(d=>d.style.display=d.dataset.s===nome?"block":"none");
 }
 function atualizarChecklist(){
   const p=window.__pontoAtual||{}; const el=document.getElementById("ckList"); if(!el)return;
