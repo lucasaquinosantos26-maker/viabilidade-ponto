@@ -38,12 +38,45 @@ body{height:100vh;overflow:hidden;background:#f4f6fb}
 #cgPasso{font-size:12.5px;color:var(--cinza);margin-top:6px;min-height:32px}
 .barra{height:6px;background:#eef2fd;border-radius:99px;margin-top:12px;overflow:hidden}
 .barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--azul),var(--amarelo));border-radius:99px;transition:width .4s}
+/* dica flutuante no mapa vazio */
+#dica{position:absolute;top:110px;left:50%;transform:translateX(-50%);z-index:900;background:#1c2430;color:#fff;padding:10px 16px;border-radius:99px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.3);display:none;align-items:center;gap:8px;animation:pulsa 2.4s ease-in-out infinite}
+@keyframes pulsa{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.035)}}
+/* legenda do mapa */
+#legenda{position:absolute;bottom:60px;left:12px;z-index:900;background:rgba(255,255,255,.96);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);font-size:11.5px;overflow:hidden}
+#legenda .cab{padding:7px 11px;font-weight:700;color:#1c2430;cursor:pointer;display:flex;align-items:center;gap:6px}
+#legenda .itens{padding:0 11px 9px;display:none}
+#legenda.aberta .itens{display:block}
+#legenda .li{display:flex;align-items:center;gap:7px;padding:3px 0;color:var(--cinza)}
+#legenda .am{width:14px;height:14px;border-radius:50%;flex:0 0 auto}
+/* abas do painel */
+.abas{display:flex;gap:4px;padding:8px 10px 0;background:#fff;border-bottom:1px solid #e3e8f2;position:sticky;top:0;z-index:5}
+.aba{flex:1;padding:8px 4px;border:none;background:none;font-size:12px;font-weight:700;color:var(--cinza);cursor:pointer;border-bottom:3px solid transparent}
+.aba.on{color:var(--azul);border-bottom-color:var(--azul)}
+/* ranking colapsável */
+.ranking.fechado{padding:6px 12px}
+.ranking .toggle{flex:0 0 auto;align-self:center;background:var(--azul);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px}
+/* modal de confirmação */
+#confirmar{position:fixed;inset:0;z-index:2600;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center}
+#confirmar .cx{background:#fff;border-radius:16px;padding:22px;width:360px;max-width:92vw}
+#confirmar h3{font-size:16px;color:#1c2430;margin-bottom:8px}
+#confirmar p{font-size:13.5px;color:var(--cinza);white-space:pre-line}
+/* estado vazio */
+.vazio{text-align:center;padding:26px 14px;color:var(--cinza)}
+.vazio .ic{font-size:34px;opacity:.5}
+.vazio b{display:block;color:#1c2430;font-size:14px;margin:8px 0 4px}
+.vazio span{font-size:12.5px}
 .painel{position:fixed;top:0;right:0;width:400px;max-width:100vw;height:100%;background:#fff;z-index:1100;box-shadow:-4px 0 20px rgba(0,0,0,.18);transform:translateX(101%);transition:transform .25s ease;display:flex;flex-direction:column}
 .painel.aberto{transform:translateX(0)}
 @media(max-width:560px){
   .painel{width:100vw}
-  .topbar b{font-size:13px}
+  .topbar b{font-size:12.5px}
   .topbar .sair{padding:6px 9px;font-size:11px}
+  .topbar.compacta .sair{display:none}
+  .topbar.compacta.aberta .sair{display:block;position:absolute;right:8px;background:var(--azul);box-shadow:0 3px 10px rgba(0,0,0,.3)}
+  .topbar.compacta.aberta .sair:nth-of-type(1){top:44px}
+  .topbar.compacta.aberta .sair:nth-of-type(2){top:80px}
+  .topbar.compacta.aberta .sair:nth-of-type(3){top:116px}
+  #menuBtn{display:block !important}
   .busca{flex-wrap:wrap}
   .busca input{min-width:60%}
   .chip{min-width:150px}
@@ -113,9 +146,23 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
   </div>
 </div>
 
-<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="abrirOrientacao()">🧭 Onde procurar</button><button class="sair" style="margin-left:0" onclick="sair()">Sair</button></div>
+<div class="topbar"><b>🗺 Viabilidade de Ponto — Ótica Center</b><span id="quem" style="font-size:12px;opacity:.85"></span><button class="sair" onclick="abrirOrientacao()">🧭 Onde procurar</button><button class="sair" style="margin-left:0" onclick="sair()">Sair</button><button id="menuBtn" style="display:none;margin-left:auto;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;padding:4px 10px;border-radius:6px;cursor:pointer" onclick="document.querySelector('.topbar').classList.toggle('aberta')">☰</button></div>
 <div class="busca"><input id="qEnd" placeholder="Endereço, link do Google Maps ou coordenadas — ou toque no mapa"><button id="bBuscar" onclick="ocupado('bBuscar','…',buscarEndereco)">Buscar</button><button id="bCalor" class="calorbtn" onclick="toggleCalor()">🔥 Calor</button></div>
 <div id="map"></div>
+<div id="dica">👆 Toque no mapa para marcar o imóvel que você encontrou</div>
+<div id="legenda" onclick="this.classList.toggle('aberta')">
+  <div class="cab">🗺 Legenda <span style="color:var(--cinza);font-weight:400">▾</span></div>
+  <div class="itens">
+    <div class="li"><span class="am" style="border:2px solid #D64545;background:rgba(214,69,69,.12)"></span> Corredor recomendado — procure aqui</div>
+    <div class="li"><span class="am" style="background:#2E5EEA"></span> Ponto que você marcou</div>
+    <div class="li"><span class="am sem verde"></span> Recomendado &nbsp;<span class="am sem amarelo"></span> Atenção &nbsp;<span class="am sem vermelho"></span> Não recomendado</div>
+    <div class="li">🔥 Calor = concentração de comércio e pedestres</div>
+  </div>
+</div>
+<div id="confirmar"><div class="cx"><h3 id="cfTitulo">Confirmar</h3><p id="cfTexto"></p>
+  <button class="btn pri" id="cfSim">Confirmar</button>
+  <button class="btn sec" id="cfNao">Cancelar</button>
+</div></div>
 
 <div id="toasts"></div>
 <div id="carregando"><div class="cx"><div class="spin"></div><div id="cgTitulo">Analisando a cidade…</div><div id="cgPasso">Iniciando</div><div class="barra"><i id="cgBarra"></i></div></div></div>
@@ -194,13 +241,25 @@ async function cadastrar(){
 function sair(){TOKEN=null;try{localStorage.removeItem("oc_sessao")}catch(e){};location.reload()}
 function v(id){return document.getElementById(id).value.trim()}
 
+// ---------- CONFIRMAÇÃO NO PADRÃO DO APP (substitui o confirm do navegador) ----------
+function confirmar(texto,titulo){
+  return new Promise(res=>{
+    const m=document.getElementById("confirmar");
+    document.getElementById("cfTitulo").textContent=titulo||"Confirmar";
+    document.getElementById("cfTexto").textContent=texto;
+    m.style.display="flex";
+    const fim=v=>{m.style.display="none";res(v);};
+    document.getElementById("cfSim").onclick=()=>fim(true);
+    document.getElementById("cfNao").onclick=()=>fim(false);
+  });
+}
 // ---------- SESSÃO / UTIL ----------
 function toast(txt,tipo,ms){
   const c=document.getElementById("toasts"); if(!c)return;
   const el=document.createElement("div"); el.className="toast "+(tipo||"erro"); el.textContent=txt;
   c.appendChild(el); setTimeout(()=>el.remove(),ms||5000);
 }
-// alerts nativos viram toasts (não congelam a tela); confirm() continua nativo para decisões
+// alerts nativos viram toasts; decisões usam o modal confirmar() no padrão do app
 window.alert=(t)=>toast(String(t),"aviso");
 async function ocupado(id,rotulo,fn){
   const b=document.getElementById(id); if(!b||b.disabled)return;
@@ -259,6 +318,7 @@ function iniciar(email){
   L.control.zoom({position:"bottomright"}).addTo(mapa);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:19}).addTo(mapa);
   mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
+  if(window.innerWidth<=560) document.querySelector(".topbar").classList.add("compacta");
   mapa.on("moveend",()=>{ if(!calorOn)return; clearTimeout(calorTimer); calorTimer=setTimeout(atualizarCalor,700); });
   carregarCorredores(); carregarPontos(); atualizarRanking();
   // botão do backoffice — só para o time de expansão (papel interno)
@@ -293,7 +353,7 @@ async function abrirExpansao(){
             <select id="st_${h.id}" style="width:100%;margin-top:6px;padding:8px;border:1px solid #d5dbe7;border-radius:8px;background:#fff">${stOpts.map(s=>`<option value="${s}" ${h.status===s?"selected":""}>${stLabel(s)}</option>`).join("")}</select>
             <input type="text" id="pa_${h.id}" placeholder="parecer interno…" value="${(h.parecer||"").replace(/"/g,"&quot;")}" style="margin-top:6px">
             <button class="btn sec" id="bh_${h.id}" onclick="ocupado('bh_${h.id}','Salvando…',()=>salvarHandoff('${h.id}'))">Salvar</button>
-          </div>`).join(""):'<div style="font-size:12.5px;color:var(--cinza)">Nenhum handoff na fila.</div>'}
+          </div>`).join(""):'<div class="vazio"><div class="ic">📭</div><b>Nenhum ponto encaminhado ainda</b><span>Quando um candidato tocar em "Seguir para negociação", o ponto aparece aqui.</span></div>'}
       </div>
       <div class="card">
         <h4 style="margin-top:0">📊 Pontos da rede (${ps.length}) — visão interna</h4>
@@ -302,7 +362,7 @@ async function abrirExpansao(){
             <span class="sem ${p.semaforo||"amarelo"}"></span><b>${(p.endereco||"Ponto").split(",").slice(0,2).join(",")}</b>
             <div style="color:var(--cinza)">${p.cidade||""} · ${p.bandeira||"—"} · ${p.candidato||""}${p.status==="handoff"?" · <b>EM NEGOCIAÇÃO</b>":""}</div>
             <div>Score: <b>${p.score??"—"}</b>/100 · Projeção: <b>${fmtProj(p.projecao)}</b> · Fluxo: ${p.fluxo_media??"—"}/2min · ${(p.recomendacao||"").replaceAll("_"," ")}</div>
-          </div>`).join("")||'<div style="font-size:12.5px;color:var(--cinza)">Nenhum ponto cadastrado.</div>'}
+          </div>`).join("")||'<div class="vazio"><div class="ic">🗺</div><b>Nenhum ponto cadastrado</b><span>Os pontos marcados pelos candidatos aparecem aqui com score e projeção.</span></div>'}
       </div>
       <div style="font-size:11px;color:var(--verm);text-align:center;margin-top:6px">🔒 Dados internos da Diretoria de Expansão — nunca compartilhe score ou projeção com o candidato.</div>`;
   }catch(e){document.getElementById("pCorpo").innerHTML='<div class="aviso">'+e.message+'</div>'}
@@ -372,6 +432,7 @@ async function carregarPontos(){
     const ps=await api("api-viabilidade","/pontos");
     ps.forEach(p=>plotar(p));
     if(!ps.length){
+      document.getElementById("dica").style.display="flex";
       document.getElementById("bvPergunta").style.display="block";
       document.getElementById("bvCidade").style.display="none";
       document.getElementById("boasvindas").style.display="flex";
@@ -702,6 +763,18 @@ function plotar(p){
   if(marcadores[p.id]) mapa.removeLayer(marcadores[p.id]);
   const m=L.marker([p.lat,p.lng]).addTo(mapa).on("click",()=>abrirPonto(p.id));
   marcadores[p.id]=m;
+  document.getElementById("dica").style.display="none";
+}
+// destaca visualmente o ponto que está aberto no painel
+function destacarPin(id){
+  Object.entries(marcadores).forEach(([k,m])=>{
+    const el=m.getElement&&m.getElement();
+    if(!el)return;
+    const ativo=k===id;
+    el.style.filter=ativo?"drop-shadow(0 0 7px #FFC72C)":"none";
+    el.style.transform=(el.style.transform||"").replace(/ scale\([^)]*\)/,"")+(ativo?" scale(1.35)":"");
+    el.style.zIndex=ativo?1000:"";
+  });
 }
 // Chave opcional do Google (Geocoding API). Preencha para busca mais precisa;
 // vazio = usa OpenStreetMap. Restrinja a chave por referrer no console do Google.
@@ -791,7 +864,20 @@ async function abrirPonto(id){
   document.getElementById("pTitulo").textContent=(p.endereco||"Ponto").split(",").slice(0,2).join(",");
   const a=p.ultima_analise?.resultado_sanitizado;
   document.getElementById("pCorpo").innerHTML=`
-    ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
+    <div class="abas">
+      <button class="aba on" data-s="analise" onclick="trocarAba('analise')">Análise</button>
+      <button class="aba" data-s="dados" onclick="trocarAba('dados')">Dados</button>
+      <button class="aba" data-s="fluxo" onclick="trocarAba('fluxo')">Fluxo</button>
+      <button class="aba" data-s="fotos" onclick="trocarAba('fotos')">Fotos</button>
+    </div>
+    <div class="sec" data-s="analise">
+    ${a?cardAnalise(a):`<div class="aviso">Ainda sem análise. Complete o que souber na aba <b>Dados</b> e toque em Analisar — o motor estima mesmo com dados parciais.</div>`}
+    <div class="card">
+      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
+      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
+    </div>
+    </div>
+    <div class="sec" data-s="dados" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">Dados do imóvel</h4>
       <div class="linha2">
@@ -815,10 +901,8 @@ async function abrirPonto(id){
       <button class="btn sec" id="bSalvar" onclick="ocupado('bSalvar','Salvando…',salvarDados)">Salvar dados</button>
       <button class="btn pri" id="bAnalisar" onclick="ocupado('bAnalisar','Analisando…',analisar)">Analisar ponto</button>
     </div>
-    <div class="card">
-      <h4 style="margin-top:0">📋 Checklist da Etapa 2</h4>
-      <div id="ckList" style="font-size:13px;color:#1c2430">Carregando…</div>
     </div>
+    <div class="sec" data-s="fotos" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">📷 Fotos do imóvel</h4>
       <div style="font-size:12px;color:var(--cinza)">Fachada, interior, vitrine e entorno — fazem parte da análise final.</div>
@@ -826,6 +910,8 @@ async function abrirPonto(id){
       <input type="file" id="fFoto" accept="image/*" capture="environment" style="display:none" onchange="enviarFoto(this)">
       <button class="btn sec" id="bFoto" onclick="document.getElementById('fFoto').click()">📷 Adicionar foto</button>
     </div>
+    </div>
+    <div class="sec" data-s="fluxo" style="display:none">
     <div class="card">
       <h4 style="margin-top:0">Contagem de fluxo — padrão oficial</h4>
       <div style="font-size:12.5px;color:var(--cinza)">2 minutos, entre <b>12h e 14h</b>, em frente ao imóvel. Faça <b>2 a 3 leituras em dias diferentes</b>; a média é calculada sozinha.</div>
@@ -849,10 +935,12 @@ async function abrirPonto(id){
       </div>
       <div class="lista-f" id="fluxoResumo">Carregando leituras…</div>
     </div>
+    </div>
     <button class="btn amar" id="bHandoff" onclick="ocupado('bHandoff','Enviando…',handoff)">✓ Seguir para negociação</button>
     <button class="btn" style="background:none;color:var(--verm)" id="bDescartar" onclick="ocupado('bDescartar','Descartando…',descartarPonto)">Descartar este ponto</button>
     <div style="font-size:11px;color:var(--cinza);text-align:center;margin-top:8px">Estimativas comparativas — não constituem garantia de resultado.<br>A decisão de locar é sua, com apoio do time de expansão.</div>`;
   document.getElementById("painel").classList.add("aberto");
+  destacarPin(id);
   resumoFluxo(); listarFotos(); atualizarChecklist();
 }
 
@@ -881,9 +969,16 @@ async function enviarFoto(inp){
   }catch(e){toast(e.message,"erro")}
   b.disabled=false; b.textContent="📷 Adicionar foto"; inp.value="";
 }
+function trocarAba(nome){
+  document.querySelectorAll("#pCorpo .aba").forEach(b=>b.classList.toggle("on",b.dataset.s===nome));
+  document.querySelectorAll("#pCorpo .sec").forEach(d=>d.style.display=d.dataset.s===nome?"block":"none");
+}
 function atualizarChecklist(){
   const p=window.__pontoAtual||{}; const el=document.getElementById("ckList"); if(!el)return;
   const it=(ok,txt)=>`<div style="padding:3px 0">${ok?"✅":"⬜"} ${txt}</div>`;
+  const pend=[!fluxoOkCache,p.aluguel_pedido==null,p.carencia_meses==null,p.contrato_5anos!==true,!fotosCache.length,!p.bandeira].filter(Boolean).length;
+  const bA=document.getElementById("bAnalisar");
+  if(bA&&!bA.disabled) bA.textContent=pend?`Analisar ponto (faltam ${pend} ${pend===1?"item":"itens"})`:"Analisar ponto ✓";
   el.innerHTML=
     it(fluxoOkCache,"Contagem de fluxo (mínimo 1 leitura válida)")+
     it(p.aluguel_pedido!=null,"Valor do aluguel pedido")+
@@ -905,8 +1000,8 @@ function cardAnalise(a){
   </div>`;
 }
 function fmt(n){return Number(n).toLocaleString("pt-BR")}
-function fecharPainel(){
-  if(contando&&!confirm("Há uma contagem em andamento. Fechar o painel descarta a contagem. Fechar mesmo assim?"))return;
+async function fecharPainel(){
+  if(contando&&!(await confirmar("Há uma contagem em andamento. Fechar o painel descarta a contagem.","Fechar mesmo assim?")))return;
   if(contando){clearInterval(tick);contando=false;pausado=false;resetContagemUI();}
   document.getElementById("painel").classList.remove("aberto");
 }
@@ -929,7 +1024,7 @@ async function salvarDados(){
   }catch(e){toast(e.message,"erro");return}
 }
 async function descartarPonto(){
-  if(!confirm("Descartar este ponto? Ele sai do mapa e do ranking."))return;
+  if(!(await confirmar("Ele sai do mapa e do seu ranking. Esta ação não pode ser desfeita.","Descartar este ponto?")))return;
   try{
     await api("api-viabilidade","/pontos/"+pontoAtivo,"PATCH",{status:"arquivado"});
     if(marcadores[pontoAtivo]){mapa.removeLayer(marcadores[pontoAtivo]);delete marcadores[pontoAtivo];}
@@ -944,7 +1039,7 @@ async function analisar(){
   catch(e){alert(e.message)}
 }
 async function handoff(){
-  if(!confirm("Encaminhar este ponto para negociação? O time de expansão será notificado."))return;
+  if(!(await confirmar("O time de expansão será notificado e entrará em contato.","Encaminhar este ponto para negociação?")))return;
   try{const r=await api("api-viabilidade","/handoff","POST",{ponto_id:pontoAtivo});toast(r.mensagem,"ok");fecharPainel();atualizarRanking();}
   catch(e){toast(e.message,"erro")}
 }
@@ -967,9 +1062,9 @@ function pausarContagem(){
   document.getElementById("btnPause").innerHTML=pausado?"&#9654; Retomar":"&#9208; Pausar";
   document.getElementById("btnTap").textContent=pausado?"PAUSADO":"TOQUE a cada pessoa que passar";
 }
-function cancelarContagem(){
+async function cancelarContagem(){
   if(!contando)return;
-  if(!confirm("Cancelar esta contagem? Os toques serão descartados."))return;
+  if(!(await confirmar("Os toques feitos até agora serão descartados.","Cancelar esta contagem?")))return;
   clearInterval(tick);contando=false;pausado=false;
   resetContagemUI();
 }
@@ -977,7 +1072,7 @@ async function registrarManual(){
   const n=num("fManual");
   if(n==null||n<0||n>500){alert("Informe quantas pessoas passaram nos 2 minutos (0 a 500).");return}
   const janela=document.getElementById("fJanela").checked;
-  if(!janela&&!confirm("A contagem NÃO foi feita entre 12h e 14h?\n\nEla será registrada como fora do padrão e não entra na média. Registrar mesmo assim?"))return;
+  if(!janela&&!(await confirmar("Ela será registrada como fora do padrão e não entra na média oficial.","A contagem não foi entre 12h e 14h?")))return;
   const d=new Date();
   if(janela){d.setHours(12,30,0,0); if(d.getTime()>Date.now()) d.setDate(d.getDate()-1);}
   // GPS também no registro manual (validação de que a pessoa esteve no local)
@@ -1026,14 +1121,22 @@ async function atualizarRanking(){
   try{
     const itens=await api("api-viabilidade","/ranking");
     const el=document.getElementById("ranking");
-    if(!itens.length){el.innerHTML='<span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto.</span>';return}
-    el.innerHTML=itens.map(i=>`<div class="chip ${i.recomendacao==="nao_recomendado"?"nr":""}" onclick="focar('${i.ponto_id}')">
+    if(!itens.length){el.className="ranking";el.innerHTML='<span style="font-size:12.5px;color:var(--cinza);align-self:center">Solte um pin no mapa para analisar o primeiro ponto.</span>';return}
+    const fechado=localStorage.getItem("oc_rank_fechado")==="1";
+    el.className="ranking"+(fechado?" fechado":"");
+    el.innerHTML=`<button class="toggle" onclick="toggleRanking()">${fechado?"▲":"▼"} Meus pontos (${itens.length})</button>`+
+    (fechado?"":itens.map(i=>`<div class="chip ${i.recomendacao==="nao_recomendado"?"nr":""}" onclick="focar('${i.ponto_id}')">
       <span class="pos">#${i.posicao}</span> <span class="sem ${i.semaforo||"amarelo"}"></span>
       <div class="end">${(i.endereco||"Ponto").split(",").slice(0,2).join(",")}</div>
       <div class="st">${i.recomendacao==="sem_analise"?"sem análise":i.recomendacao.replaceAll("_"," ")}${i.fachada_recuada?" · recuada":""}${i.fluxo_media!=null?` · fluxo ${i.fluxo_media}`:""}</div>
     </div>`).join("")+
-    `<div style="flex:0 0 auto;align-self:center;font-size:11.5px;color:var(--cinza);max-width:150px">Quanto mais opções, mais forte a comparação.</div>`;
+    `<div style="flex:0 0 auto;align-self:center;font-size:11.5px;color:var(--cinza);max-width:150px">Quanto mais opções, mais forte a comparação.</div>`);
   }catch(e){console.warn(e)}
+}
+function toggleRanking(){
+  const f=localStorage.getItem("oc_rank_fechado")==="1";
+  localStorage.setItem("oc_rank_fechado",f?"0":"1");
+  atualizarRanking();
 }
 async function focar(id){
   const p=await api("api-viabilidade","/pontos/"+id);
