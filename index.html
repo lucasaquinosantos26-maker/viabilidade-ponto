@@ -132,8 +132,10 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
       <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Vamos verificar o perfil da cidade e marcar no mapa as ruas onde a busca deve se concentrar.</p>
       <label>Estado</label>
       <select id="bvUf" onchange="carregarMunicipios()"><option value="">Carregando estados…</option></select>
-      <label>Cidade</label>
-      <select id="bvInput" disabled><option value="">Escolha o estado primeiro</option></select>
+      <label>Cidade <span style="font-weight:400;color:var(--cinza)">— digite para buscar</span></label>
+      <input type="text" id="bvInput" list="dlCidades" placeholder="Escolha o estado primeiro" disabled autocomplete="off">
+      <datalist id="dlCidades"></datalist>
+      <div id="bvSugestoes" style="display:none;max-height:150px;overflow-y:auto;border:1px solid #d5dbe7;border-top:none;border-radius:0 0 8px 8px;margin-top:-2px"></div>
       <button class="btn pri" id="bOrientar" onclick="ocupado('bOrientar','Analisando…',orientarCidade)">Ver ruas de foco</button>
       <button class="btn sec" onclick="fecharBoasVindas()">Deixar para depois</button>
     </div>
@@ -404,24 +406,44 @@ async function carregarEstados(){
     if(Array.isArray(ufsCache)&&ufsCache.length) pintarEstados(sel,ufsCache.map(u=>[u.sigla,u.nome]));
   }catch(e){ /* mantém a lista fixa */ }
 }
+function semAcento(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
 async function carregarMunicipios(){
   const uf=document.getElementById("bvUf").value;
-  const sel=document.getElementById("bvInput");
-  if(!uf){sel.innerHTML='<option value="">Escolha o estado primeiro</option>';sel.disabled=true;return}
-  sel.disabled=true; sel.innerHTML='<option value="">Carregando cidades…</option>';
+  const inp=document.getElementById("bvInput");
+  const dl=document.getElementById("dlCidades");
+  const sug=document.getElementById("bvSugestoes");
+  inp.value=""; sug.style.display="none";
+  if(!uf){inp.disabled=true;inp.placeholder="Escolha o estado primeiro";dl.innerHTML="";return}
+  inp.disabled=true; inp.placeholder="Carregando cidades…";
   for(let t=0;t<2;t++){
     try{
       if(!munCache[uf]){
         const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`,{signal:AbortSignal.timeout(8000)});
         munCache[uf]=await r.json();
       }
-      sel.innerHTML='<option value="">— escolha a cidade —</option>'+munCache[uf].map(m=>`<option value="${m.nome}">${m.nome}</option>`).join("");
-      sel.disabled=false; return;
+      const nomes=munCache[uf].map(m=>m.nome);
+      dl.innerHTML=nomes.map(n=>`<option value="${n}">`).join("");
+      inp.disabled=false; inp.placeholder=`Digite a cidade (${nomes.length} no estado)`;
+      inp.oninput=()=>filtrarCidades(nomes);
+      inp.onfocus=()=>filtrarCidades(nomes);
+      return;
     }catch(e){ if(t===0) await new Promise(r=>setTimeout(r,1200)); }
   }
-  // último recurso: deixa digitar o nome
-  sel.outerHTML='<input type="text" id="bvInput" placeholder="digite o nome da cidade">';
-  toast("Não consegui carregar a lista de cidades. Digite o nome da cidade.","aviso",6000);
+  inp.disabled=false; inp.placeholder="Digite o nome da cidade";
+  toast("Não consegui carregar a lista. Digite o nome da cidade.","aviso",6000);
+}
+// lista de sugestões própria (funciona igual no celular e no computador)
+function filtrarCidades(nomes){
+  const inp=document.getElementById("bvInput"), sug=document.getElementById("bvSugestoes");
+  const q=semAcento(inp.value.trim());
+  const achou=(q?nomes.filter(n=>semAcento(n).includes(q)):nomes).slice(0,60);
+  if(!achou.length||(achou.length===1&&semAcento(achou[0])===q)){sug.style.display="none";return}
+  sug.innerHTML=achou.map(n=>`<div onmousedown="escolherCidade('${n.replace(/'/g,"\\'")}')" style="padding:8px 11px;font-size:13.5px;cursor:pointer;border-bottom:1px solid #f1f4fb" onmouseover="this.style.background='#eef2fd'" onmouseout="this.style.background='#fff'">${n}</div>`).join("");
+  sug.style.display="block";
+}
+function escolherCidade(n){
+  document.getElementById("bvInput").value=n;
+  document.getElementById("bvSugestoes").style.display="none";
 }
 function fecharBoasVindas(){document.getElementById("boasvindas").style.display="none";}
 function distM(a,b){
@@ -587,7 +609,16 @@ function desenharFoco(ruas){
 }
 async function orientarCidade(){
   const cid=v("bvInput"); const uf=v("bvUf").toUpperCase();
-  if(!cid){toast("Digite a cidade.","erro");return}
+  if(!uf){toast("Escolha o estado.","erro");return}
+  if(!cid){toast("Digite ou escolha a cidade.","erro");return}
+  // se a cidade digitada não existir no estado, avisa antes de gastar tempo
+  const lista=munCache[uf];
+  if(lista&&lista.length&&!lista.some(m=>semAcento(m.nome)===semAcento(cid))){
+    const parecidas=lista.filter(m=>semAcento(m.nome).includes(semAcento(cid))).slice(0,3).map(m=>m.nome);
+    toast(parecidas.length?`"${cid}" não existe em ${uf}. Você quis dizer: ${parecidas.join(", ")}?`:`"${cid}" não foi encontrada em ${uf}. Confira a grafia.`,"erro",7000);
+    return;
+  }
+  document.getElementById("bvSugestoes").style.display="none";
   fecharBoasVindas();
   cgAbrir("Analisando "+cid+"…");
   cgPasso("Localizando a cidade no mapa…",5);
