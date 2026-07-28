@@ -504,8 +504,16 @@ async function carregarMunicipios(){
   for(let t=0;t<2;t++){
     try{
       if(!munCache[uf]){
+        // 1) cache no próprio aparelho (vale 30 dias) — evita 2,5 s de espera do IBGE a cada troca de estado
+        try{
+          const g=JSON.parse(localStorage.getItem("oc_mun_"+uf)||"null");
+          if(g&&g.em&&(Date.now()-g.em)<30*864e5&&Array.isArray(g.lista)&&g.lista.length) munCache[uf]=g.lista;
+        }catch(e){}
+      }
+      if(!munCache[uf]){
         const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`,{signal:AbortSignal.timeout(8000)});
         munCache[uf]=await r.json();
+        try{ localStorage.setItem("oc_mun_"+uf,JSON.stringify({em:Date.now(),lista:munCache[uf].map(m=>({nome:m.nome}))})); }catch(e){}
       }
       const nomes=munCache[uf].map(m=>m.nome);
       dl.innerHTML=nomes.map(n=>`<option value="${n}">`).join("");
