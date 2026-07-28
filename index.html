@@ -196,13 +196,13 @@ h4{font-size:13px;color:#1c2430;margin:14px 0 4px}
       <h1 style="font-size:18px;color:#1c2430">Bem-vindo! 👋</h1>
       <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Você já tem um imóvel em vista para a sua loja?</p>
       <button class="btn pri" onclick="fecharBoasVindas();toast('Busque o endereço ou toque no mapa para marcar o seu ponto.','ok',6000)">Sim — vou marcar no mapa</button>
-      <button class="btn amar" onclick="document.getElementById('bvPergunta').style.display='none';document.getElementById('bvCidade').style.display='block'">Ainda não — quero orientação de onde procurar</button>
+      <button class="btn amar" onclick="document.getElementById('bvPergunta').style.display='none';document.getElementById('bvCidade').style.display='block';carregarEstados()">Ainda não — quero orientação de onde procurar</button>
     </div>
     <div id="bvCidade" style="display:none">
       <h1 style="font-size:18px;color:#1c2430">Onde você quer abrir a loja?</h1>
       <p style="font-size:13.5px;color:var(--cinza);margin:8px 0 2px">Vamos verificar o perfil da cidade e marcar no mapa as ruas onde a busca deve se concentrar.</p>
       <label>Estado</label>
-      <select id="bvUf" onchange="carregarMunicipios()"><option value="">Carregando estados…</option></select>
+      <select id="bvUf" onchange="carregarMunicipios()"><option value="">— escolha o estado —</option></select>
       <label>Cidade <span style="font-weight:400;color:var(--cinza)">— digite para buscar</span></label>
       <input type="text" id="bvInput" list="dlCidades" placeholder="Escolha o estado primeiro" disabled autocomplete="off">
       <datalist id="dlCidades"></datalist>
@@ -344,7 +344,8 @@ function iniciar(email){
   mapa.on("click",e=>novoPonto(e.latlng.lat,e.latlng.lng));
   if(window.innerWidth<=560) document.querySelector(".topbar").classList.add("compacta");
   mapa.on("moveend",()=>{ if(!calorOn)return; clearTimeout(calorTimer); calorTimer=setTimeout(atualizarCalor,700); });
-  carregarCorredores(); carregarPontos(); atualizarRanking();
+  // em paralelo: antes cada uma esperava a anterior (~1,7 s x 4)
+  Promise.allSettled([carregarCorredores(),carregarPontos(),atualizarRanking()]);
   // botão do backoffice — só para o time de expansão (papel interno)
   api("api-viabilidade","/perfil").then(pf=>{
     if(pf?.papel==="interno"&&!document.getElementById("bExp")){
@@ -712,14 +713,16 @@ async function orientarCidade(){
   if(!g){cgFechar();toast("Cidade não encontrada no mapa. Confira a grafia.","erro");return}
   mapa.setView([g.lat,g.lng],14);
   cgPasso("Consultando o perfil da cidade (IBGE + rede)…",10);
-  let ter=null;
-  try{ ter=await api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")); }catch(e){console.warn("territorio",e)}
-  let ruas=[], doCache=false;
-  // 1) cache da cidade (instantâneo) — inclui os corredores já validados pela rede
-  try{
-    const c=await api("corredores-cidade","?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:""));
-    if(c?.encontrado&&c.ruas?.length){ ruas=c.ruas; doCache=true; cgPasso("Corredores da cidade já mapeados ✓",60); }
-  }catch(e){console.warn("cache",e)}
+  // perfil da cidade e corredores em cache: buscados JUNTOS (antes um esperava o outro)
+  let ter=null, ruas=[], doCache=false;
+  const [rTer,rCache]=await Promise.allSettled([
+    api("api-viabilidade","/territorio?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:"")),
+    api("corredores-cidade","?cidade="+encodeURIComponent(cid)+(uf?"&uf="+uf:""))
+  ]);
+  if(rTer.status==="fulfilled") ter=rTer.value; else console.warn("territorio",rTer.reason);
+  if(rCache.status==="fulfilled"&&rCache.value?.encontrado&&rCache.value.ruas?.length){
+    ruas=rCache.value.ruas; doCache=true; cgPasso("Corredores da cidade já mapeados ✓",60);
+  }
   // 2) com cache suficiente: mostra agora e enriquece em segundo plano (sem fazer a pessoa esperar)
   const enriquecer=async(silencioso)=>{
     try{
@@ -740,12 +743,12 @@ async function orientarCidade(){
     }
     return null;
   };
-  if(doCache&&ruas.length>=2){
+  if(doCache&&ruas.length>=1){
     enriquecer(true); // refina em segundo plano; a pessoa já vê o resultado
   }else{
     // sem cache: espera no máximo 30s pelo mapa e segue com o que tiver
     cgPasso("Consultando o mapa da região (primeira vez nesta cidade)…",50);
-    const j=await Promise.race([enriquecer(false),new Promise(res=>setTimeout(()=>res(null),30000))]);
+    const j=await Promise.race([enriquecer(false),new Promise(res=>setTimeout(()=>res(null),12000))]);
     if(j) ruas=j;
     if(!ruas.length) toast("Os servidores de mapa estão lentos agora. Explore o mapa manualmente ou tente novamente em alguns minutos.","aviso",7000);
   }
